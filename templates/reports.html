@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Attendance Reports</h2>
+<form method="POST">
+    <label>Subject:</label>
+    <select name="subject_id" required>
+        <option value="">Select subject</option>
+        {% for subject in subjects %}
+            <option value="{{ subject.id }}">{{ subject.name }}</option>
+        {% endfor %}
+    </select><br>
+    <label>Start Date:</label>
+    <input type="date" name="start_date"><br>
+    <label>End Date:</label>
+    <input type="date" name="end_date"><br>
+    <button type="submit">Generate Report</button>
+</form>
+{% if records %}
+<h3>Attendance for {{ subject.name }}</h3>
+<table border="1">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Student Name</th>
+            <th>Roll No</th>
+            <th>Status</th>
+            <th>Time</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for att in records %}
+        <tr>
+            <td>{{ att.date }}</td>
+            <td>{{ att.student.name }}</td>
+            <td>{{ att.student.roll_no }}</td>
+            <td>{{ att.status }}</td>
+            <td>{{ att.timestamp.strftime('%H:%M:%S') }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Register Student</h2>
+<form method="POST" enctype="multipart/form-data">
+    <label>Roll Number:</label>
+    <input type="text" name="roll_no" required><br>
+    <label>Name:</label>
+    <input type="text" name="name" required><br>
+    <label>Batch:</label>
+    <select name="batch_id" required>
+        <option value="">Select batch</option>
+        {% for batch in batches %}
+            <option value="{{ batch.id }}">{{ batch.name }}</option>
+        {% endfor %}
+    </select><br>
+    <label>Face Image:</label>
+    <input type="file" name="face_image" accept="image/*" required><br>
+    <button type="submit">Register</button>
+</form>
+{% endblock %}

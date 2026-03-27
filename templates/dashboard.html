@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Dashboard</h2>
+<p>Welcome, {{ user.username }}!</p>
+<p>Select department, batch, and subject to manage:</p>
+<form id="selection-form">
+    <div>
+        <label>Department:</label>
+        <select id="department" name="department_id">
+            <option value="">Select</option>
+            {% for dept in departments %}
+                <option value="{{ dept.id }}">{{ dept.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label>Batch:</label>
+        <select id="batch" name="batch_id" disabled>
+            <option value="">Select department first</option>
+        </select>
+    </div>
+    <div>
+        <label>Subject:</label>
+        <select id="subject" name="subject_id" disabled>
+            <option value="">Select batch first</option>
+        </select>
+    </div>
+</form>
+<div>
+    <a href="{{ url_for('register_student') }}" class="action">Register Students</a>
+    <a href="{{ url_for('mark_attendance') }}" class="action">Mark Attendance</a>
+    <a href="{{ url_for('reports') }}" class="action">View Reports</a>
+</div>
+<script>
+    document.getElementById('department').addEventListener('change', function() {
+        var deptId = this.value;
+        var batchSelect = document.getElementById('batch');
+        if (deptId) {
+            fetch('/get_batches/' + deptId)
+                .then(response => response.json())
+                .then(data => {
+                    batchSelect.disabled = false;
+                    batchSelect.innerHTML = '<option value="">Select batch</option>' +
+                        data.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+                });
+        } else {
+            batchSelect.disabled = true;
+            batchSelect.innerHTML = '<option value="">Select department first</option>';
+        }
+        // Reset subject
+        document.getElementById('subject').disabled = true;
+        document.getElementById('subject').innerHTML = '<option value="">Select batch first</option>';
+    });
+    document.getElementById('batch').addEventListener('change', function() {
+        var batchId = this.value;
+        var subjectSelect = document.getElementById('subject');
+        if (batchId) {
+            fetch('/get_subjects/' + batchId)
+                .then(response => response.json())
+                .then(data => {
+                    subjectSelect.disabled = false;
+                    subjectSelect.innerHTML = '<option value="">Select subject</option>' +
+                        data.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                });
+        } else {
+            subjectSelect.disabled = true;
+            subjectSelect.innerHTML = '<option value="">Select batch first</option>';
+        }
+    });
+</script>
+{% endblock %}
