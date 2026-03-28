@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Students ({{ dept.name }} - {{ batch.name }})</h2>
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Add New Student</div>
+            <div class="card-body">
+                <form action="{{ url_for('add_student') }}" method="post">
+                    <div class="mb-3">
+                        <label for="roll_no" class="form-label">Roll Number</label>
+                        <input type="text" class="form-control" id="roll_no" name="roll_no" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Add Student</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Existing Students</div>
+            <div class="card-body">
+                {% if students %}
+                <table class="table table-striped">
+                    <thead>
+                        <tr><th>Roll No</th><th>Name</th><th>Registered On</th><th>Enrolled</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for student in students %}
+                        <tr>
+                            <td>{{ student.roll_no }}</td>
+                            <td>{{ student.name }}</td>
+                            <td>{{ student.registered_on.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                {% set count = student.embeddings.count() %}
+                                {% if count >= 3 %}
+                                <span class="badge bg-success">Enrolled ({{ count }})</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">{{ count }}/3 photos</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('enroll_student', roll_no=student.roll_no) }}" class="btn btn-sm btn-primary">Enroll</a>
+                                <a href="{{ url_for('delete_student', roll_no=student.roll_no) }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete student?')">Delete</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p>No students registered yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

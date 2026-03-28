@@ -1,11 +1,8 @@
 import os
-
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SECRET_KEY = 'your-secret-key-here'  # Change in production
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(BASE_DIR, 'instance', 'attendance.db')
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-please-change'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
+        'sqlite:///' + os.path.join(basedir, 'attendance.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    # Upload folder for temporary images (optional)
-    UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload

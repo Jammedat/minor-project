@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Register Student</h2>
-<form method="POST" enctype="multipart/form-data">
+<h2>Register New Student</h2>
+<form method="post">
     <label>Roll Number:</label>
     <input type="text" name="roll_no" required><br>
     <label>Name:</label>
@@ -13,8 +13,6 @@
             <option value="{{ batch.id }}">{{ batch.name }}</option>
         {% endfor %}
     </select><br>
-    <label>Face Image:</label>
-    <input type="file" name="face_image" accept="image/*" required><br>
     <button type="submit">Register</button>
 </form>
 {% endblock %}

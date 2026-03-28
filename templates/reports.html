@@ -1,43 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Attendance Reports</h2>
-<form method="POST">
-    <label>Subject:</label>
-    <select name="subject_id" required>
-        <option value="">Select subject</option>
-        {% for subject in subjects %}
-            <option value="{{ subject.id }}">{{ subject.name }}</option>
-        {% endfor %}
-    </select><br>
-    <label>Start Date:</label>
-    <input type="date" name="start_date"><br>
-    <label>End Date:</label>
-    <input type="date" name="end_date"><br>
-    <button type="submit">Generate Report</button>
-</form>
-{% if records %}
-<h3>Attendance for {{ subject.name }}</h3>
-<table border="1">
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Student Name</th>
-            <th>Roll No</th>
-            <th>Status</th>
-            <th>Time</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for att in records %}
-        <tr>
-            <td>{{ att.date }}</td>
-            <td>{{ att.student.name }}</td>
-            <td>{{ att.student.roll_no }}</td>
-            <td>{{ att.status }}</td>
-            <td>{{ att.timestamp.strftime('%H:%M:%S') }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
+<h2>Attendance Report for {{ subject.name }}</h2>
+<div class="row mb-3">
+    <div class="col-md-6">
+        <form method="get" class="row g-3">
+            <div class="col-auto">
+                <label for="from_date" class="col-form-label">From:</label>
+                <input type="date" id="from_date" name="from_date" class="form-control">
+            </div>
+            <div class="col-auto">
+                <label for="to_date" class="col-form-label">To:</label>
+                <input type="date" id="to_date" name="to_date" class="form-control">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary mt-4">Filter</button>
+            </div>
+        </form>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('download_report') }}" class="btn btn-success">Download CSV</a>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Attendance Records</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead><tr><th>Roll No</th><th>Name</th><th>Date</th><th>Time</th><th>Method</th></tr></thead>
+                    <tbody>
+                        {% for rec in records %}
+                        <tr>
+                            <td>{{ rec.student_roll_no }}</td>
+                            <td>{{ rec.student.name }}</td>
+                            <td>{{ rec.date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ rec.time.strftime('%H:%M') }}</td>
+                            <td>{{ rec.method }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Summary (Present Days)</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead><tr><th>Roll No</th><th>Name</th><th>Present</th></tr></thead>
+                    <tbody>
+                        {% for item in summary %}
+                        <tr>
+                            <td>{{ item.roll_no }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.present }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

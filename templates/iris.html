@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Iris Recognition for {{ subject.name }}</h2>
+<div class="row">
+    <div class="col-md-8">
+        <video id="irisVideo" autoplay playsinline width="100%"></video>
+        <button id="captureIris" class="btn btn-primary mt-2">Capture for Verification</button>
+    </div>
+    <div class="col-md-4">
+        <div id="irisResult" class="card">
+            <div class="card-header">Iris Result</div>
+            <div class="card-body">
+                <div id="irisStatus">Ready</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const video = document.getElementById('irisVideo');
+    const captureBtn = document.getElementById('captureIris');
+    const resultDiv = document.getElementById('irisStatus');
+
+    // Start webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { video.srcObject = stream; })
+        .catch(err => { resultDiv.innerHTML = "Error: " + err.message; });
+
+    captureBtn.addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataURL = canvas.toDataURL('image/jpeg');
+        fetch('/iris/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataURL, subject_id: {{ subject.id }} })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.iris_detected) {
+                resultDiv.innerHTML = `Iris detected! Student: ${data.name}`;
+                if (data.marked) {
+                    resultDiv.innerHTML += "<br>Attendance marked.";
+                } else {
+                    resultDiv.innerHTML += "<br>Already marked today.";
+                }
+            } else {
+                resultDiv.innerHTML = "No iris detected. Try again with better lighting.";
+            }
+        })
+        .catch(err => resultDiv.innerHTML = "Error: " + err.message);
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Enroll Face Photos for {{ student.name }} ({{ student.roll_no }})</h2>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Use Webcam</div>
+            <div class="card-body">
+                <video id="webcam" autoplay playsinline width="100%"></video>
+                <button id="capture" class="btn btn-primary mt-2">Capture Photo</button>
+                <canvas id="canvas" style="display:none;"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Upload Photos</div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    <input type="file" name="photos" multiple accept="image/*" class="form-control mb-2">
+                    <button type="submit" class="btn btn-success">Enroll Uploaded</button>
+                </form>
+                <hr>
+                <p>Currently enrolled photos: <strong>{{ count }}</strong> (need at least 3 for reliable recognition)</p>
+                <a href="{{ url_for('students') }}" class="btn btn-secondary">Back to Students</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Webcam capture script
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const captureBtn = document.getElementById('capture');
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => console.error("Error accessing webcam: ", err));
+    }
+
+    captureBtn.addEventListener('click', () => {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // Convert canvas to blob and submit via form or AJAX
+        canvas.toBlob(blob => {
+            const formData = new FormData();
+            formData.append('photos', blob, 'webcam_capture.jpg');
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                window.location.reload();
+            }).catch(err => console.error(err));
+        }, 'image/jpeg');
+    });
+</script>
+{% endblock %}

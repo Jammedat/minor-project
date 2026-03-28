@@ -1,293 +1,488 @@
+# app.py
 import os
-import numpy as np
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
-import pandas as pd
 import cv2
-from PIL import Image
-import io
+import numpy as np
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, date, time
+import base64
+import threading
+import random
+import pickle
 
 from config import Config
-from models import db, User, Department, Batch, Subject, Student, Attendance
-from utils import embedder, face_db, liveness, attendance as att_module
+from models import db, Teacher, Department, Batch, Subject, Student, FaceEmbedding, Attendance
+from face_utils import embedder, liveness
+from face_utils.recognition import FaceMatcher
 
-# Create Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Initialize extensions
 db.init_app(app)
 
-# Ensure database tables exist
-with app.app_context():
-    db.create_all()
-    # Create default department and batch if not exist (optional)
-    # For demo, we can create some sample data via a separate script
+# Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 
-# Helper to get current user from session
-def get_current_user():
-    if 'user_id' in session:
-        return User.query.get(session['user_id'])
-    return None
+def seed_default_data():
+    """Create default departments and batches if they don't exist."""
+    # Departments
+    dept_names = ['Computer Science', 'Electronics', 'Mechanical', 'Civil']
+    for name in dept_names:
+        if not Department.query.filter_by(name=name).first():
+            dept = Department(name=name)
+            db.session.add(dept)
+            db.session.commit()
+            # For each department, create batches (e.g., 2022, 2023, 2024)
+            for year in ['2022', '2023', '2024']:
+                batch_name = f"{year} Batch"
+                if not Batch.query.filter_by(name=batch_name, department_id=dept.id).first():
+                    batch = Batch(name=batch_name, department_id=dept.id)
+                    db.session.add(batch)
+    db.session.commit()
 
-# ---------- Routes ----------
+class TeacherUser(UserMixin):
+    def __init__(self, teacher):
+        self.id = teacher.id
+        self.username = teacher.username
+
+    @staticmethod
+    def get(user_id):
+        teacher = Teacher.query.get(int(user_id))
+        return TeacherUser(teacher) if teacher else None
+
+@login_manager.user_loader
+def load_user(user_id):
+    return TeacherUser.get(user_id)
+
+# Initialize the face matcher
+face_matcher = FaceMatcher(db, embedder)  # we'll define this
+
+# ----------------------------------------------------------------------
+# Routes
+# ----------------------------------------------------------------------
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return redirect(url_for('login'))
 
-@app.route('/register_teacher', methods=['GET', 'POST'])
-def register_teacher():
+@app.route('/register', methods=['GET', 'POST'])
+def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if len(username) < 3 or len(password) < 6:
-            flash('Username must be at least 3 characters, password at least 6.')
-            return redirect(url_for('register_teacher'))
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists.')
-            return redirect(url_for('register_teacher'))
-        user = User(username=username, password_hash=generate_password_hash(password))
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful. Please login.')
-        return redirect(url_for('login'))
-    return render_template('register_teacher.html')
+        if Teacher.query.filter_by(username=username).first():
+            flash('Username already exists', 'danger')
+        else:
+            hashed = generate_password_hash(password)
+            teacher = Teacher(username=username, password_hash=hashed)
+            db.session.add(teacher)
+            db.session.commit()
+            flash('Registration successful. Please log in.', 'success')
+            return redirect(url_for('login'))
+    return render_template('register.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password):
-            session['user_id'] = user.id
-            session['username'] = user.username
-            flash('Logged in successfully.')
+        teacher = Teacher.query.filter_by(username=username).first()
+        if teacher and check_password_hash(teacher.password_hash, password):
+            user = TeacherUser(teacher)
+            login_user(user)
             return redirect(url_for('dashboard'))
-        flash('Invalid username or password.')
+        else:
+            flash('Invalid username or password')
     return render_template('login.html')
 
 @app.route('/logout')
+@login_required
 def logout():
-    session.clear()
-    flash('Logged out.')
-    return redirect(url_for('index'))
+    logout_user()
+    return redirect(url_for('login'))
 
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET', 'POST'])
+@login_required
 def dashboard():
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    # Get departments for dropdown
+    if request.method == 'POST':
+        dept_id = request.form.get('department')
+        batch_id = request.form.get('batch')
+        subject_id = request.form.get('subject')
+        new_subject_name = request.form.get('new_subject', '').strip()
+
+        # Validate required selections
+        if not dept_id or not batch_id:
+            flash('Please select both department and batch.', 'warning')
+            return redirect(url_for('dashboard'))
+
+        # Save to session
+        session['dept_id'] = dept_id
+        session['batch_id'] = batch_id
+
+        # Handle subject selection/creation
+        if new_subject_name:
+            # Check if subject already exists for this batch
+            existing = Subject.query.filter_by(
+                name=new_subject_name, 
+                batch_id=batch_id
+            ).first()
+            if existing:
+                session['subject_id'] = existing.id
+                flash(f'Using existing subject: {existing.name}', 'info')
+            else:
+                new_sub = Subject(name=new_subject_name, batch_id=batch_id)
+                db.session.add(new_sub)
+                db.session.commit()
+                session['subject_id'] = new_sub.id
+                flash(f'New subject "{new_subject_name}" created.', 'success')
+        elif subject_id:
+            # Use selected existing subject
+            session['subject_id'] = subject_id
+        else:
+            flash('Please select or create a subject.', 'warning')
+            return redirect(url_for('dashboard'))
+
+        return redirect(url_for('attendance'))
+
+    # GET: Show selection form with current values
     departments = Department.query.all()
-    # For simplicity, if no departments exist, create some sample
-    if not departments:
-        # Create sample departments, batches, subjects (only once)
-        dept1 = Department(name='Computer Science')
-        dept2 = Department(name='Electronics')
-        db.session.add_all([dept1, dept2])
-        db.session.commit()
-        batch1 = Batch(name='3rd Year', department_id=dept1.id)
-        batch2 = Batch(name='2nd Semester', department_id=dept1.id)
-        db.session.add_all([batch1, batch2])
-        db.session.commit()
-        # Assign subjects to teacher (current user)
-        subj1 = Subject(name='Machine Learning', batch_id=batch1.id, teacher_id=user.id)
-        subj2 = Subject(name='Database Systems', batch_id=batch2.id, teacher_id=user.id)
-        db.session.add_all([subj1, subj2])
-        db.session.commit()
-        departments = Department.query.all()
-    return render_template('dashboard.html', departments=departments, user=user)
+    batches = Batch.query.all()
+    subjects = Subject.query.all()
+    return render_template(
+        'dashboard.html',
+        departments=departments,
+        batches=batches,
+        subjects=subjects
+    )
 
-@app.route('/get_batches/<int:dept_id>')
-def get_batches(dept_id):
-    batches = Batch.query.filter_by(department_id=dept_id).all()
-    return jsonify([{'id': b.id, 'name': b.name} for b in batches])
-
-@app.route('/get_subjects/<int:batch_id>')
-def get_subjects(batch_id):
-    user = get_current_user()
-    subjects = Subject.query.filter_by(batch_id=batch_id, teacher_id=user.id).all()
-    return jsonify([{'id': s.id, 'name': s.name} for s in subjects])
-
-@app.route('/register_student', methods=['GET', 'POST'])
-def register_student():
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    if request.method == 'POST':
-        roll_no = request.form['roll_no'].strip()
-        name = request.form['name'].strip()
-        batch_id = int(request.form['batch_id'])
-        # Check if student already exists in this batch
-        existing = Student.query.filter_by(roll_no=roll_no, batch_id=batch_id).first()
-        if existing:
-            flash(f'Student with roll number {roll_no} already exists in this batch.')
-            return redirect(url_for('register_student'))
-        # Get face image
-        if 'face_image' not in request.files:
-            flash('No face image uploaded.')
-            return redirect(url_for('register_student'))
-        file = request.files['face_image']
-        if file.filename == '':
-            flash('No image selected.')
-            return redirect(url_for('register_student'))
-        # Read image file
-        try:
-            img_bytes = file.read()
-            nparr = np.frombuffer(img_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        except Exception as e:
-            flash(f'Error reading image: {e}')
-            return redirect(url_for('register_student'))
-        # Extract embedding
-        emb, msg = embedder.extract_embedding(img_rgb)
-        if emb is None:
-            flash(f'Face embedding failed: {msg}')
-            return redirect(url_for('register_student'))
-        # Register in face_db
-        ok, msg = face_db.register_student(roll_no, name)
-        if not ok:
-            flash(msg)
-            return redirect(url_for('register_student'))
-        ok, msg = face_db.add_embedding(roll_no, emb)
-        if not ok:
-            flash(msg)
-            # Rollback face_db registration? We could delete it, but okay.
-            return redirect(url_for('register_student'))
-        # Save to Student table
-        student = Student(roll_no=roll_no, name=name, batch_id=batch_id)
-        db.session.add(student)
-        db.session.commit()
-        flash(f'Student {name} registered successfully with {face_db.get_student(roll_no)["n_photos"]} photo(s).')
+@app.route('/students')
+@login_required
+def students():
+    # Get students for the current teacher's selection? Actually teacher selects department/batch
+    dept_id = session.get('dept_id')
+    batch_id = session.get('batch_id')
+    if not dept_id or not batch_id:
+        flash('Please select department and batch first', 'warning')
         return redirect(url_for('dashboard'))
-    # GET: display form with batches for this teacher
-    batches = Batch.query.all()  # Or filter by teacher's departments?
-    return render_template('register_student.html', batches=batches)
+    dept = Department.query.get(dept_id)
+    batch = Batch.query.get(batch_id)
+    students = Student.query.filter_by(department_id=dept_id, batch_id=batch_id).all()
+    return render_template('students.html', students=students, dept=dept, batch=batch)
 
-@app.route('/mark_attendance', methods=['GET', 'POST'])
-def mark_attendance():
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
-    if request.method == 'POST':
-        subject_id = int(request.form['subject_id'])
-        # Get the subject and its batch
-        subject = Subject.query.get(subject_id)
-        if not subject:
-            flash('Invalid subject.')
-            return redirect(url_for('mark_attendance'))
-        # Get the uploaded image (from webcam or file)
-        if 'image' not in request.files:
-            flash('No image uploaded.')
-            return redirect(url_for('mark_attendance'))
-        file = request.files['image']
-        if file.filename == '':
-            flash('No image selected.')
-            return redirect(url_for('mark_attendance'))
-        # Read image
-        try:
-            img_bytes = file.read()
-            nparr = np.frombuffer(img_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        except Exception as e:
-            flash(f'Error reading image: {e}')
-            return redirect(url_for('mark_attendance'))
-        # Liveness check (optional)
-        # if not liveness.perform_liveness(img_rgb):  # We'll need to implement a simple check
-        #     flash('Liveness check failed.')
-        #     return redirect(url_for('mark_attendance'))
-        # Extract embedding
-        emb, msg = embedder.extract_embedding(img_rgb)
-        if emb is None:
-            flash(f'No face detected: {msg}')
-            return redirect(url_for('mark_attendance'))
-        # Get all students in this batch (to limit matching)
-        batch_students = Student.query.filter_by(batch_id=subject.batch_id).all()
-        batch_roll_nos = [s.roll_no for s in batch_students]
-        # Custom match function: we'll use face_db.find_match but restrict to batch_roll_nos
-        match = find_match_in_rollnos(emb, batch_roll_nos)
-        if not match['matched']:
-            flash(match['message'])
-            return redirect(url_for('mark_attendance'))
-        # Student found, record attendance
-        student = Student.query.filter_by(roll_no=match['roll_no'], batch_id=subject.batch_id).first()
-        if not student:
-            flash('Student not found in database.')
-            return redirect(url_for('mark_attendance'))
-        # Check if already marked today for this subject
-        today = date.today()
-        existing = Attendance.query.filter_by(student_id=student.id, subject_id=subject_id, date=today).first()
-        if existing:
-            flash(f'{student.name} already marked present today.')
-            return redirect(url_for('mark_attendance'))
-        # Record attendance
-        att = Attendance(student_id=student.id, subject_id=subject_id, date=today, marked_by=user.id)
-        db.session.add(att)
+@app.route('/students/add', methods=['POST'])
+@login_required
+def add_student():
+    roll_no = request.form['roll_no']
+    name = request.form['name']
+    dept_id = session.get('dept_id')
+    batch_id = session.get('batch_id')
+    if not dept_id or not batch_id:
+        flash('Please select department and batch first', 'warning')
+        return redirect(url_for('dashboard'))
+    # Check if roll already exists
+    if Student.query.get(roll_no):
+        flash('Student with this roll number already exists', 'danger')
+        return redirect(url_for('students'))
+    student = Student(roll_no=roll_no, name=name, department_id=dept_id, batch_id=batch_id)
+    db.session.add(student)
+    db.session.commit()
+    flash(f'Student {name} added', 'success')
+    return redirect(url_for('students'))
+
+@app.route('/students/delete/<roll_no>')
+@login_required
+def delete_student(roll_no):
+    student = Student.query.get(roll_no)
+    if student:
+        db.session.delete(student)
         db.session.commit()
-        flash(f'Attendance marked for {student.name} ({match["confidence"]}% confidence).')
-        return redirect(url_for('mark_attendance'))
-    # GET: display form with subjects for teacher
-    subjects = Subject.query.filter_by(teacher_id=user.id).all()
-    return render_template('mark_attendance.html', subjects=subjects)
+        flash(f'Student {roll_no} deleted', 'success')
+    else:
+        flash('Student not found', 'danger')
+    return redirect(url_for('students'))
 
-def find_match_in_rollnos(query_emb, roll_nos, threshold=None):
-    """Similar to face_db.find_match but only considers given roll_nos."""
-    # Load face_db dictionary
-    db_dict = face_db._load_db()  # internal function
-    # Filter to those roll_nos that exist in db
-    candidates = {r: db_dict[r] for r in roll_nos if r in db_dict and db_dict[r]['mean_emb'] is not None}
-    if not candidates:
-        return {'matched': False, 'roll_no': None, 'name': 'Unknown', 'confidence': 0.0,
-                'message': 'No enrolled students in this batch.'}
-    # Use threshold from embedder if not provided
-    if threshold is None:
-        threshold = embedder.get_threshold()
-    best_sim = -1.0
-    best_roll = None
-    q = query_emb.astype(np.float32)
-    for roll_no, data in candidates.items():
-        # Similarity to mean embedding
-        sim = float(np.dot(q, data['mean_emb']))
-        # Also check individual embeddings
-        for emb in data['embeddings']:
-            s = float(np.dot(q, emb.astype(np.float32)))
-            if s > sim:
-                sim = s
-        if sim > best_sim:
-            best_sim = sim
-            best_roll = roll_no
-    confidence = round(best_sim * 100, 1)
-    if best_sim < threshold:
-        return {'matched': False, 'roll_no': None, 'name': 'Unknown', 'confidence': confidence,
-                'message': f'No match found (best score {confidence}%).'}
-    student = db_dict[best_roll]
-    return {'matched': True, 'roll_no': best_roll, 'name': student['name'], 'confidence': confidence,
-            'message': 'OK'}
-
-@app.route('/reports', methods=['GET', 'POST'])
-def reports():
-    user = get_current_user()
-    if not user:
-        return redirect(url_for('login'))
+@app.route('/enroll/<roll_no>', methods=['GET', 'POST'])
+@login_required
+def enroll_student(roll_no):
+    student = Student.query.get(roll_no)
+    if not student:
+        flash('Student not found', 'danger')
+        return redirect(url_for('students'))
     if request.method == 'POST':
-        subject_id = int(request.form['subject_id'])
-        start_date = request.form['start_date']
-        end_date = request.form['end_date']
-        # Query attendance
-        query = Attendance.query.filter_by(subject_id=subject_id)
-        if start_date:
-            query = query.filter(Attendance.date >= datetime.strptime(start_date, '%Y-%m-%d').date())
-        if end_date:
-            query = query.filter(Attendance.date <= datetime.strptime(end_date, '%Y-%m-%d').date())
-        records = query.order_by(Attendance.date.desc()).all()
-        # Get subject name
-        subject = Subject.query.get(subject_id)
-        return render_template('reports.html', records=records, subject=subject, start_date=start_date, end_date=end_date, subjects=Subject.query.filter_by(teacher_id=user.id).all())
-    # GET: show form with subjects
-    subjects = Subject.query.filter_by(teacher_id=user.id).all()
-    return render_template('reports.html', subjects=subjects, records=[])
+        # Process uploaded images
+        files = request.files.getlist('photos')
+        if not files:
+            flash('No files uploaded', 'warning')
+            return redirect(url_for('enroll_student', roll_no=roll_no))
+        saved = 0
+        for file in files:
+            if file and allowed_file(file.filename):
+                img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                emb, msg = embedder.extract_embedding(img_rgb)
+                if emb is not None:
+                    # Save embedding
+                    emb_blob = serialize_embedding(emb)
+                    embedding = FaceEmbedding(student_roll_no=roll_no, embedding_blob=emb_blob)
+                    db.session.add(embedding)
+                    db.session.commit()
+                    saved += 1
+                else:
+                    flash(f'Failed to extract embedding from {file.filename}: {msg}', 'warning')
+        if saved:
+            flash(f'{saved} face photo(s) enrolled for {student.name}', 'success')
+        return redirect(url_for('students'))
+    # GET: show enrollment page with current count
+    count = FaceEmbedding.query.filter_by(student_roll_no=roll_no).count()
+    return render_template('enroll.html', student=student, count=count)
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
+
+# Helper to serialize embeddings for storage
+def serialize_embedding(emb):
+    return emb.astype(np.float32).tobytes()
+
+def deserialize_embedding(data):
+    return np.frombuffer(data, dtype=np.float32)
+
+@app.route('/attendance')
+@login_required
+def attendance():
+    # Ensure selection is present
+    dept_id = session.get('dept_id')
+    batch_id = session.get('batch_id')
+    subject_id = session.get('subject_id')
+    if not (dept_id and batch_id and subject_id):
+        flash('Please select department, batch, and subject first', 'warning')
+        return redirect(url_for('dashboard'))
+    subject = Subject.query.get(subject_id)
+    return render_template('attendance.html', subject=subject)
+
+@app.route('/attendance/process_frame', methods=['POST'])
+@login_required
+def process_frame():
+    """
+    Receive a base64 encoded frame from the frontend, perform face detection,
+    liveness challenge, and face recognition. Returns JSON with status.
+    """
+    # Get the frame data
+    data = request.get_json()
+    image_data = data.get('image')
+    if not image_data:
+        return jsonify({'error': 'No image data'}), 400
+
+    # Decode base64
+    try:
+        # Remove header if present
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        img_bytes = base64.b64decode(image_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Could not decode image")
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+    # Get current session state (stored in server memory per user)
+    user_id = current_user.id
+    if user_id not in app.config.get('SESSION_STATES', {}):
+        # Initialize state
+        app.config['SESSION_STATES'][user_id] = {
+            'phase': 'challenge',
+            'challenge': random.choice(['BLINK', 'TURN_LEFT', 'TURN_RIGHT']),
+            'frames': [],  # store recent frames for liveness
+            'result': None,
+            'result_frames': 0,
+            'last_marked': []
+        }
+    state = app.config['SESSION_STATES'][user_id]
+
+    # Process frame
+    result = process_attendance_frame(img_rgb, state, session['subject_id'])
+    return jsonify(result)
+
+def process_attendance_frame(img_rgb, state, subject_id):
+    """
+    Main logic for processing one frame. Returns dict for frontend.
+    """
+    # Face detection
+    bbox = embedder.get_face_bbox(img_rgb)
+    if bbox is None:
+        # No face detected
+        return {'status': 'no_face', 'phase': state['phase'], 'challenge': state['challenge']}
+
+    # Analyze liveness
+    frame_data = liveness.analyse_frame(img_rgb)  # we need to adapt liveness.py to work with RGB
+    # liveness.analyse_frame expects RGB and returns FrameData object
+    # We'll assume liveness.py is updated to have analyse_frame that works with RGB.
+
+    # Update state frames buffer (keep last 10 frames for blink/turn detection)
+    state['frames'].append(frame_data)
+    if len(state['frames']) > 10:
+        state['frames'].pop(0)
+
+    if state['phase'] == 'challenge':
+        # Evaluate challenge using the buffered frames
+        challenge = state['challenge']
+        passed, msg = liveness.evaluate_challenge(challenge, state['frames'])
+        if passed:
+            # Challenge passed, now recognize face
+            emb, emb_msg = embedder.extract_embedding(img_rgb)
+            if emb is None:
+                return {'status': 'embedding_failed', 'message': emb_msg, 'phase': 'result', 'success': False}
+            # Match face against students in the current batch
+            match = face_matcher.find_match(emb, subject_id, threshold=embedder.get_threshold())
+            if match['matched']:
+                # Mark attendance
+                student = Student.query.get(match['roll_no'])
+                if student:
+                    # Check if already marked today for this subject
+                    today = date.today()
+                    existing = Attendance.query.filter_by(
+                        student_roll_no=student.roll_no,
+                        subject_id=subject_id,
+                        date=today
+                    ).first()
+                    if existing:
+                        marked = False
+                        msg = f"{student.name} already marked present today"
+                    else:
+                        att = Attendance(
+                            student_roll_no=student.roll_no,
+                            subject_id=subject_id,
+                            date=today,
+                            time=datetime.now().time(),
+                            method='face'
+                        )
+                        db.session.add(att)
+                        db.session.commit()
+                        marked = True
+                        msg = f"{student.name} marked present"
+                    # Update state to show result
+                    state['phase'] = 'result'
+                    state['result'] = {
+                        'success': True,
+                        'name': student.name,
+                        'roll_no': student.roll_no,
+                        'confidence': match['confidence'],
+                        'marked': marked,
+                        'message': msg
+                    }
+                    state['result_frames'] = 60  # show result for ~2 seconds (assuming 30 fps)
+                    return {
+                        'status': 'success',
+                        'name': student.name,
+                        'roll_no': student.roll_no,
+                        'confidence': match['confidence'],
+                        'marked': marked,
+                        'message': msg
+                    }
+            else:
+                # No match
+                state['phase'] = 'result'
+                state['result'] = {
+                    'success': False,
+                    'name': 'Unknown',
+                    'roll_no': None,
+                    'confidence': match['confidence'],
+                    'marked': False,
+                    'message': 'Face not recognized'
+                }
+                state['result_frames'] = 60
+                return {
+                    'status': 'no_match',
+                    'name': 'Unknown',
+                    'confidence': match['confidence'],
+                    'message': 'Face not recognized'
+                }
+        else:
+            # Still in challenge phase
+            return {
+                'status': 'challenge_active',
+                'phase': 'challenge',
+                'challenge': challenge,
+                'message': msg,
+                'face_detected': True
+            }
+    elif state['phase'] == 'result':
+        # Displaying result, decrement counter
+        state['result_frames'] -= 1
+        if state['result_frames'] <= 0:
+            # Reset to challenge
+            state['phase'] = 'challenge'
+            state['challenge'] = random.choice(['BLINK', 'TURN_LEFT', 'TURN_RIGHT'])
+            state['frames'] = []
+            state['result'] = None
+            return {'status': 'reset'}
+        else:
+            # Still showing result
+            return {'status': 'result', **state['result']}
+    else:
+        return {'status': 'unknown'}
+
+# Global dictionary for states (should be per user, maybe in memory)
+app.config['SESSION_STATES'] = {}
+
+@app.route('/reports')
+@login_required
+def reports():
+    subject_id = session.get('subject_id')
+    if not subject_id:
+        flash('Please select a subject first', 'warning')
+        return redirect(url_for('dashboard'))
+    subject = Subject.query.get(subject_id)
+    # Get attendance for this subject, optionally with date filters
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    query = Attendance.query.filter_by(subject_id=subject_id)
+    if from_date:
+        query = query.filter(Attendance.date >= datetime.strptime(from_date, '%Y-%m-%d').date())
+    if to_date:
+        query = query.filter(Attendance.date <= datetime.strptime(to_date, '%Y-%m-%d').date())
+    records = query.all()
+    # Build summary per student
+    summary = {}
+    for rec in records:
+        key = rec.student_roll_no
+        if key not in summary:
+            student = Student.query.get(key)
+            summary[key] = {'name': student.name, 'count': 0}
+        summary[key]['count'] += 1
+    summary_list = [{'roll_no': k, 'name': v['name'], 'present': v['count']} for k, v in summary.items()]
+    # Optionally, all students in the batch
+    dept_id = session.get('dept_id')
+    batch_id = session.get('batch_id')
+    if dept_id and batch_id:
+        all_students = Student.query.filter_by(department_id=dept_id, batch_id=batch_id).all()
+        for student in all_students:
+            if student.roll_no not in summary:
+                summary_list.append({'roll_no': student.roll_no, 'name': student.name, 'present': 0})
+    return render_template('reports.html', records=records, summary=summary_list, subject=subject)
+
+# For downloading CSV
+@app.route('/reports/download')
+@login_required
+def download_report():
+    subject_id = session.get('subject_id')
+    if not subject_id:
+        flash('Please select a subject first', 'warning')
+        return redirect(url_for('dashboard'))
+    # Similar to above, get records and convert to CSV
+    # We'll implement later
+    pass
+
+# ----------------------------------------------------------------------
+# Start the app
+# ----------------------------------------------------------------------
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()  # Create tables if not exist
+        seed_default_data()  # Seed departments and batches
     app.run(debug=True)
