@@ -1,61 +1,199 @@
 {% extends "base.html" %}
+{% block title %}Students{% endblock %}
+
 {% block content %}
-<h2>Students ({{ dept.name }} - {{ batch.name }})</h2>
-<div class="row">
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">Add New Student</div>
-            <div class="card-body">
-                <form action="{{ url_for('add_student') }}" method="post">
-                    <div class="mb-3">
-                        <label for="roll_no" class="form-label">Roll Number</label>
-                        <input type="text" class="form-control" id="roll_no" name="roll_no" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Full Name</label>
-                        <input type="text" class="form-control" id="name" name="name" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Add Student</button>
-                </form>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">Existing Students</div>
-            <div class="card-body">
-                {% if students %}
-                <table class="table table-striped">
-                    <thead>
-                        <tr><th>Roll No</th><th>Name</th><th>Registered On</th><th>Enrolled</th><th>Actions</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for student in students %}
-                        <tr>
-                            <td>{{ student.roll_no }}</td>
-                            <td>{{ student.name }}</td>
-                            <td>{{ student.registered_on.strftime('%Y-%m-%d') }}</td>
-                            <td>
-                                {% set count = student.embeddings.count() %}
-                                {% if count >= 3 %}
-                                <span class="badge bg-success">Enrolled ({{ count }})</span>
-                                {% else %}
-                                <span class="badge bg-warning text-dark">{{ count }}/3 photos</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <a href="{{ url_for('enroll_student', roll_no=student.roll_no) }}" class="btn btn-sm btn-primary">Enroll</a>
-                                <a href="{{ url_for('delete_student', roll_no=student.roll_no) }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete student?')">Delete</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p>No students registered yet.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Students</h1>
+    <p class="page-sub">
+      {{ session.dept_name }} &nbsp;·&nbsp; {{ session.batch_name }}
+      <span class="badge bg-secondary ms-1">{{ students|length }} registered</span>
+    </p>
+  </div>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registerModal">
+    <i class="bi bi-person-plus me-2"></i>Register Student
+  </button>
 </div>
+
+<!-- Student table -->
+{% if students %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Roll No.</th>
+          <th>Name</th>
+          <th class="text-center">Face Photos</th>
+          <th class="text-center">Iris Photos</th>
+          <th class="text-center">Status</th>
+          <th>Registered On</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr id="row-{{ s.id }}">
+          <td><code class="text-primary fw-semibold">{{ s.roll_no }}</code></td>
+          <td>
+            <span id="name-{{ s.id }}">{{ s.name }}</span>
+          </td>
+          <td class="text-center">
+            <span class="badge {% if s.face_photos >= 3 %}bg-success{% elif s.face_photos > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+              {{ s.face_photos }}/3
+            </span>
+          </td>
+          <td class="text-center">
+            <span class="badge {% if s.iris_photos >= 3 %}bg-success{% elif s.iris_photos > 0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+              {{ s.iris_photos }}/3
+            </span>
+          </td>
+          <td class="text-center">
+            {% if s.face_photos >= 3 and s.iris_photos >= 3 %}
+              <span class="badge bg-success">Full</span>
+            {% elif s.face_photos >= 3 %}
+              <span class="badge bg-primary">Face ✓</span>
+            {% elif s.iris_photos >= 3 %}
+              <span class="badge bg-purple">Iris ✓</span>
+            {% else %}
+              <span class="badge bg-secondary">Pending</span>
+            {% endif %}
+          </td>
+          <td><small class="text-muted">{{ s.registered_on }}</small></td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <a href="{{ url_for('enroll_student', student_id=s.id) }}"
+                 class="btn btn-outline-primary" title="Enroll Biometrics">
+                <i class="bi bi-camera"></i>
+              </a>
+              <button class="btn btn-outline-secondary" title="Rename"
+                      onclick="renameStudent({{ s.id }}, '{{ s.name|e }}')">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-outline-danger" title="Delete"
+                      onclick="deleteStudent({{ s.id }}, '{{ s.name|e }}')">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">👥</div>
+  <h5>No students registered yet</h5>
+  <p class="text-muted">Register the first student for {{ session.batch_name }}.</p>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registerModal">
+    <i class="bi bi-person-plus me-2"></i>Register Student
+  </button>
+</div>
+{% endif %}
+
+
+<!-- ── Register Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="registerModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Register New Student</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Roll Number</label>
+          <input type="text" class="form-control" id="regRoll" placeholder="e.g. 21CS001"/>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Full Name</label>
+          <input type="text" class="form-control" id="regName" placeholder="e.g. Priya Sharma"/>
+        </div>
+        <div id="regMsg" class="d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="registerStudent()">
+          <i class="bi bi-check-circle me-1"></i>Register
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Rename Modal ──────────────────────────────────────────────────────── -->
+<div class="modal fade" id="renameModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Rename Student</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="renameId"/>
+        <input type="text" class="form-control" id="renameName" placeholder="New name"/>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="saveRename()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function registerStudent() {
+  const roll = document.getElementById('regRoll').value.trim();
+  const name = document.getElementById('regName').value.trim();
+  const msg  = document.getElementById('regMsg');
+  if (!roll || !name) {
+    msg.className = 'alert alert-warning'; msg.textContent = 'Please fill in all fields.'; msg.classList.remove('d-none'); return;
+  }
+  const r = await fetch('/api/students', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({roll_no: roll, name})
+  }).then(r => r.json());
+
+  msg.className = r.ok ? 'alert alert-success' : 'alert alert-danger';
+  msg.textContent = r.message;
+  msg.classList.remove('d-none');
+
+  if (r.ok) {
+    showToast(`${name} registered!`, 'success');
+    setTimeout(() => location.reload(), 800);
+  }
+}
+
+function renameStudent(id, currentName) {
+  document.getElementById('renameId').value  = id;
+  document.getElementById('renameName').value = currentName;
+  new bootstrap.Modal(document.getElementById('renameModal')).show();
+}
+
+async function saveRename() {
+  const id   = document.getElementById('renameId').value;
+  const name = document.getElementById('renameName').value.trim();
+  if (!name) return;
+  const r = await fetch(`/api/students/${id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) {
+    document.getElementById(`name-${id}`).textContent = name;
+    bootstrap.Modal.getInstance(document.getElementById('renameModal')).hide();
+  }
+}
+
+async function deleteStudent(id, name) {
+  if (!confirm(`Delete ${name}? This also removes all their biometric data.`)) return;
+  const r = await fetch(`/api/students/${id}`, { method: 'DELETE' }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) document.getElementById(`row-${id}`).remove();
+}
+</script>
 {% endblock %}

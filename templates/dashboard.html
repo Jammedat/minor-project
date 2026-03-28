@@ -1,52 +1,217 @@
 {% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
 {% block content %}
-<h2>Select Department, Batch, and Subject</h2>
-
-<form method="post">
-    <div class="mb-3">
-        <label for="department" class="form-label">Department</label>
-        <select class="form-select" id="department" name="department" required>
-            <option value="">-- Select Department --</option>
-            {% for dept in departments %}
-            <option value="{{ dept.id }}" {% if session.get('dept_id')|string == dept.id|string %}selected{% endif %}>
-                {{ dept.name }}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label for="batch" class="form-label">Batch</label>
-        <select class="form-select" id="batch" name="batch" required>
-            <option value="">-- Select Batch --</option>
-            {% for batch in batches %}
-            <option value="{{ batch.id }}" {% if session.get('batch_id')|string == batch.id|string %}selected{% endif %}>
-                {{ batch.name }}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label for="subject" class="form-label">Existing Subject</label>
-        <select class="form-select" id="subject" name="subject">
-            <option value="">-- Select Existing Subject --</option>
-            {% for sub in subjects %}
-            <option value="{{ sub.id }}" {% if session.get('subject_id')|string == sub.id|string %}selected{% endif %}>
-                {{ sub.name }}
-            </option>
-            {% endfor %}
-        </select>
-        <div class="mt-2">Or create new:</div>
-        <input type="text" class="form-control" id="new_subject" name="new_subject" placeholder="New subject name">
-    </div>
-
-    <button type="submit" class="btn btn-primary">Proceed to Attendance</button>
-</form>
-
-<hr>
-<div class="mt-3">
-    <a href="{{ url_for('students') }}" class="btn btn-secondary">Manage Students</a>
-    <a href="{{ url_for('reports') }}" class="btn btn-secondary">View Reports</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-sub">Select your department, batch and subject to begin.</p>
+  </div>
 </div>
+
+<div class="row g-4">
+  <!-- Context selector card -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-sliders me-2 text-primary"></i>Select Context</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('dashboard') }}" id="contextForm">
+          <!-- Department -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Department</label>
+            <select name="dept_id" id="deptSelect" class="form-select" required>
+              <option value="">— Choose department —</option>
+              {% for d in departments %}
+              <option value="{{ d.id }}" {% if session.dept_id == d.id %}selected{% endif %}>
+                {{ d.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Batch -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Batch / Year</label>
+            <select name="batch_id" id="batchSelect" class="form-select" required>
+              <option value="">— Select department first —</option>
+            </select>
+          </div>
+
+          <!-- Subject -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Subject</label>
+            <select name="subject_id" id="subjectSelect" class="form-select" required>
+              <option value="">— Select department first —</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="bi bi-arrow-right-circle me-2"></i>Go to Students
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add new dept / batch / subject -->
+    <div class="card mt-3">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-plus-circle me-2 text-success"></i>Add New</h6>
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                data-bs-toggle="collapse" data-bs-target="#addNewPanel">
+          Toggle
+        </button>
+      </div>
+      <div class="collapse" id="addNewPanel">
+        <div class="card-body">
+          <div class="row g-3">
+            <!-- Add Dept -->
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">New Department</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control" id="newDeptName" placeholder="e.g. IT"/>
+                <button class="btn btn-outline-primary" onclick="addDept()">Add</button>
+              </div>
+            </div>
+            <!-- Add Batch -->
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">New Batch (pick dept first)</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control" id="newBatchName" placeholder="e.g. 2025-29"/>
+                <button class="btn btn-outline-primary" onclick="addBatch()">Add</button>
+              </div>
+            </div>
+            <!-- Add Subject -->
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">New Subject (pick dept first)</label>
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control" id="newSubjectName" placeholder="e.g. AI Ethics"/>
+                <button class="btn btn-outline-primary" onclick="addSubject()">Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick stats -->
+  <div class="col-lg-5">
+    {% if session.dept_name %}
+    <div class="card mb-3 border-primary border-opacity-25">
+      <div class="card-body">
+        <h6 class="text-muted text-uppercase small fw-bold mb-3">Current Session</h6>
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <span class="badge bg-primary-subtle text-primary px-3 py-2">
+            <i class="bi bi-building me-1"></i>{{ session.dept_name }}
+          </span>
+        </div>
+        <div class="d-flex gap-2">
+          <span class="badge bg-secondary-subtle text-secondary px-3 py-2">
+            <i class="bi bi-people me-1"></i>{{ session.batch_name }}
+          </span>
+          <span class="badge bg-success-subtle text-success px-3 py-2">
+            <i class="bi bi-book me-1"></i>{{ session.subject_name }}
+          </span>
+        </div>
+        <div class="mt-3 d-flex gap-2">
+          <a href="{{ url_for('students') }}" class="btn btn-sm btn-primary">
+            <i class="bi bi-people me-1"></i>Students
+          </a>
+          <a href="{{ url_for('attendance_mark') }}" class="btn btn-sm btn-success">
+            <i class="bi bi-camera-video me-1"></i>Mark Attendance
+          </a>
+          <a href="{{ url_for('attendance_report') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-bar-chart me-1"></i>Reports
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-body">
+        <h6 class="text-muted text-uppercase small fw-bold mb-3">Quick Guide</h6>
+        <ol class="guide-list">
+          <li><strong>Select</strong> department, batch and subject above.</li>
+          <li>Go to <strong>Students</strong> to register and enroll biometrics.</li>
+          <li>Open <strong>Mark Attendance</strong> — camera runs automatically.</li>
+          <li>View and export from <strong>Reports</strong>.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const deptSel    = document.getElementById('deptSelect');
+const batchSel   = document.getElementById('batchSelect');
+const subjectSel = document.getElementById('subjectSelect');
+
+async function loadBatchesAndSubjects(deptId) {
+  if (!deptId) {
+    batchSel.innerHTML   = '<option value="">— Select department first —</option>';
+    subjectSel.innerHTML = '<option value="">— Select department first —</option>';
+    return;
+  }
+  const [batches, subjects] = await Promise.all([
+    fetch(`/api/departments/${deptId}/batches`).then(r => r.json()),
+    fetch(`/api/departments/${deptId}/subjects`).then(r => r.json()),
+  ]);
+
+  batchSel.innerHTML = '<option value="">— Choose batch —</option>' +
+    batches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+  subjectSel.innerHTML = '<option value="">— Choose subject —</option>' +
+    subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+  // Restore saved session values
+  const savedBatch   = "{{ session.batch_id or '' }}";
+  const savedSubject = "{{ session.subject_id or '' }}";
+  if (savedBatch)   batchSel.value   = savedBatch;
+  if (savedSubject) subjectSel.value = savedSubject;
+}
+
+deptSel.addEventListener('change', () => loadBatchesAndSubjects(deptSel.value));
+
+// Load on page init if dept already selected
+if (deptSel.value) loadBatchesAndSubjects(deptSel.value);
+
+async function addDept() {
+  const name = document.getElementById('newDeptName').value.trim();
+  if (!name) return;
+  const r = await fetch('/api/departments', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name})
+  }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) setTimeout(() => location.reload(), 1000);
+}
+
+async function addBatch() {
+  const name  = document.getElementById('newBatchName').value.trim();
+  const deptId = deptSel.value;
+  if (!name || !deptId) { showToast('Select a department first.', 'warning'); return; }
+  const r = await fetch('/api/batches', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, department_id: parseInt(deptId)})
+  }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) loadBatchesAndSubjects(deptId);
+}
+
+async function addSubject() {
+  const name  = document.getElementById('newSubjectName').value.trim();
+  const deptId = deptSel.value;
+  if (!name || !deptId) { showToast('Select a department first.', 'warning'); return; }
+  const r = await fetch('/api/subjects', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, department_id: parseInt(deptId)})
+  }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) loadBatchesAndSubjects(deptId);
+}
+</script>
 {% endblock %}

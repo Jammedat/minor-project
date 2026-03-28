@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Attendance Report{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Attendance Report</h1>
+    <p class="page-sub">
+      {{ session.subject_name }} &nbsp;·&nbsp; {{ session.dept_name }} / {{ session.batch_name }}
+    </p>
+  </div>
+  <a href="{{ url_for('attendance_mark') }}" class="btn btn-primary">
+    <i class="bi bi-camera-video me-2"></i>Mark Attendance
+  </a>
+</div>
+
+<!-- Filter bar -->
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <form method="GET" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">From Date</label>
+        <input type="date" name="from" class="form-control form-control-sm"
+               value="{{ date_from }}" max="{{ today }}"/>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">To Date</label>
+        <input type="date" name="to" class="form-control form-control-sm"
+               value="{{ date_to }}" max="{{ today }}"/>
+      </div>
+      <div class="col-md-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-filter me-1"></i>Filter
+        </button>
+        <a href="{{ url_for('attendance_report') }}" class="btn btn-outline-secondary btn-sm">
+          Clear
+        </a>
+        <a href="{{ url_for('attendance_export', **request.args) }}"
+           class="btn btn-success btn-sm ms-auto">
+          <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Summary cards -->
+{% set unique_dates = records|map(attribute='date')|list|unique|list %}
+{% set unique_students = records|map(attribute='roll_no')|list|unique|list %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-blue">
+      <div class="stat-value">{{ records|length }}</div>
+      <div class="stat-label">Total Records</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-green">
+      <div class="stat-value">{{ unique_students|length }}</div>
+      <div class="stat-label">Students Present</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-orange">
+      <div class="stat-value">{{ total_students }}</div>
+      <div class="stat-label">Total Enrolled</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card stat-card-purple">
+      <div class="stat-value">{{ unique_dates|length }}</div>
+      <div class="stat-label">Days Covered</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="reportTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabFull">
+      Full Records ({{ records|length }})
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabSummary">
+      Per-Student Summary
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <!-- Full records table -->
+  <div class="tab-pane fade show active" id="tabFull">
+    {% if records %}
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="recordsTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Roll No.</th>
+              <th>Name</th>
+              <th>Method</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>{{ r.date }}</td>
+              <td><small class="text-muted">{{ r.time }}</small></td>
+              <td><code class="text-primary">{{ r.roll_no }}</code></td>
+              <td>{{ r.name }}</td>
+              <td>
+                <span class="badge bg-{{ 'primary' if r.method == 'face' else 'purple' }}">
+                  <i class="bi bi-{{ 'person-bounding-box' if r.method == 'face' else 'eye' }} me-1"></i>
+                  {{ r.method }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <h5>No attendance records found</h5>
+      <p class="text-muted">
+        {% if date_from or date_to %}
+          No records in selected date range.
+        {% else %}
+          No attendance has been marked yet for this subject.
+        {% endif %}
+      </p>
+      <a href="{{ url_for('attendance_mark') }}" class="btn btn-primary">
+        <i class="bi bi-camera-video me-2"></i>Start Marking
+      </a>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Per-student summary -->
+  <div class="tab-pane fade" id="tabSummary">
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th>Roll No.</th>
+              <th>Name</th>
+              <th class="text-center">Days Present</th>
+              <th>Attendance %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set total_days = unique_dates|length %}
+            {% for s in summary %}
+            {% set pct = (s.days_present / total_days * 100)|round(1) if total_days > 0 else 0 %}
+            <tr>
+              <td><code class="text-primary">{{ s.roll_no }}</code></td>
+              <td>{{ s.name }}</td>
+              <td class="text-center">
+                <span class="fw-bold {% if s.days_present > 0 %}text-success{% else %}text-danger{% endif %}">
+                  {{ s.days_present }}
+                </span>
+                <small class="text-muted"> / {{ total_days }}</small>
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-fill" style="height:6px">
+                    <div class="progress-bar bg-{% if pct >= 75 %}success{% elif pct >= 50 %}warning{% else %}danger{% endif %}"
+                         style="width:{{ pct }}%"></div>
+                  </div>
+                  <span class="small fw-semibold" style="min-width:40px">{{ pct }}%</span>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Quick search on records table
+const searchInput = document.createElement('input');
+searchInput.className = 'form-control form-control-sm mb-2';
+searchInput.placeholder = 'Search name or roll no…';
+const table = document.getElementById('recordsTable');
+if (table) {
+  table.parentElement.insertBefore(searchInput, table);
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.toLowerCase();
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+</script>
+{% endblock %}

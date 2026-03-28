@@ -1,23 +1,113 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="login-card">
-    <div class="login-header">
-        <div class="login-icon">🎓</div>
-        <div class="login-title">Teacher Portal</div>
-        <div class="login-sub">Sign in to manage attendance</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% if signup %}Sign Up{% else %}Sign In{% endif %} — FaceAttend</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet"/>
+</head>
+<body class="auth-body">
+
+<div class="auth-split">
+  <!-- Left panel — branding -->
+  <div class="auth-left d-none d-lg-flex">
+    <div class="auth-left-content">
+      <div class="auth-logo mb-4">🎓</div>
+      <h1 class="auth-headline">Biometric Attendance<br>Made Simple</h1>
+      <p class="auth-sub">Face & iris recognition attendance system for modern classrooms.</p>
+      <div class="auth-features">
+        <div class="auth-feature"><i class="bi bi-camera-fill"></i> Automatic face recognition</div>
+        <div class="auth-feature"><i class="bi bi-eye-fill"></i> Iris recognition support</div>
+        <div class="auth-feature"><i class="bi bi-shield-check-fill"></i> Liveness detection</div>
+        <div class="auth-feature"><i class="bi bi-bar-chart-fill"></i> Detailed attendance reports</div>
+      </div>
     </div>
-    <form method="post">
-        <div class="mb-3">
-            <label for="username" class="form-label">Username</label>
-            <input type="text" class="form-control" id="username" name="username" required>
+  </div>
+
+  <!-- Right panel — form -->
+  <div class="auth-right">
+    <div class="auth-form-wrap">
+      <div class="auth-form-header">
+        <div class="auth-logo-sm">🎓</div>
+        <h2>{% if signup %}Create an account{% else %}Welcome back{% endif %}</h2>
+        <p class="text-muted">
+          {% if signup %}
+            Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+          {% else %}
+            New here? <a href="{{ url_for('signup') }}">Create an account</a>
+          {% endif %}
+        </p>
+      </div>
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show py-2" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('signup' if signup else 'login') }}">
+        {% if signup %}
         <div class="mb-3">
-            <label for="password" class="form-label">Password</label>
-            <input type="password" class="form-control" id="password" name="password" required>
+          <label class="form-label">Full Name</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-person"></i></span>
+            <input type="text" name="name" class="form-control" placeholder="e.g. Dr. Aarav Sharma" required/>
+          </div>
         </div>
-        <button type="submit" class="btn btn-primary w-100">Sign In →</button>
-    </form>
-    <hr>
-    <p class="text-center">Don't have an account? <a href="{{ url_for('register') }}">Register here</a></p>
+        {% endif %}
+
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-at"></i></span>
+            <input type="text" name="username" class="form-control" placeholder="your_username"
+                   autocomplete="username" required minlength="3"/>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">Password</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-lock"></i></span>
+            <input type="password" name="password" class="form-control" placeholder="••••••••"
+                   autocomplete="{% if signup %}new-password{% else %}current-password{% endif %}"
+                   required minlength="6" id="pwInput"/>
+            <button class="btn btn-outline-secondary" type="button" id="pwToggle">
+              <i class="bi bi-eye" id="pwIcon"></i>
+            </button>
+          </div>
+          {% if signup %}<div class="form-text">At least 6 characters.</div>{% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 btn-lg">
+          <i class="bi bi-{% if signup %}person-plus{% else %}box-arrow-in-right{% endif %} me-2"></i>
+          {% if signup %}Create Account{% else %}Sign In{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
 </div>
-{% endblock %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const pwToggle = document.getElementById('pwToggle');
+  const pwInput  = document.getElementById('pwInput');
+  const pwIcon   = document.getElementById('pwIcon');
+  if (pwToggle) {
+    pwToggle.addEventListener('click', () => {
+      const show = pwInput.type === 'password';
+      pwInput.type = show ? 'text' : 'password';
+      pwIcon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,45 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Recognition Attendance System</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Custom CSS (must come after Bootstrap to override) -->
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}FaceAttend{% endblock %} — Biometric Attendance</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet"/>
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">🎓 Face Attendance</a>
-            {% if current_user.is_authenticated %}
-            <div class="d-flex">
-                <span class="navbar-text me-3">Hello, {{ current_user.username }}</span>
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
-            </div>
-            {% endif %}
-        </div>
-    </nav>
 
-    <div class="container mt-4">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message|safe }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+{% if session.teacher_id %}
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-icon">🎓</span>
+    <span class="brand-text">FaceAttend</span>
+  </div>
 
-        {% block content %}{% endblock %}
+  <!-- Context badge -->
+  {% if session.dept_name %}
+  <div class="context-badge">
+    <div class="context-label">Current Context</div>
+    <div class="context-dept">{{ session.dept_name }}</div>
+    <div class="context-meta">{{ session.batch_name }} &nbsp;·&nbsp; {{ session.subject_name }}</div>
+  </div>
+  {% else %}
+  <div class="context-badge context-badge-empty">
+    <i class="bi bi-exclamation-circle me-1"></i> No context selected
+  </div>
+  {% endif %}
+
+  <nav class="sidebar-nav">
+    <a href="{{ url_for('dashboard') }}"
+       class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+      <i class="bi bi-grid-1x2"></i> Dashboard
+    </a>
+    {% if session.dept_id %}
+    <a href="{{ url_for('students') }}"
+       class="nav-item {% if request.endpoint in ('students','enroll_student') %}active{% endif %}">
+      <i class="bi bi-people"></i> Students
+    </a>
+    <a href="{{ url_for('attendance_mark') }}"
+       class="nav-item {% if request.endpoint == 'attendance_mark' %}active{% endif %}">
+      <i class="bi bi-camera-video"></i> Mark Attendance
+    </a>
+    <a href="{{ url_for('attendance_report') }}"
+       class="nav-item {% if request.endpoint == 'attendance_report' %}active{% endif %}">
+      <i class="bi bi-bar-chart-line"></i> Reports
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="teacher-info">
+      <div class="teacher-avatar">{{ session.teacher_name[0]|upper }}</div>
+      <div>
+        <div class="teacher-name">{{ session.teacher_name }}</div>
+        <a href="{{ url_for('logout') }}" class="logout-link">Sign out</a>
+      </div>
     </div>
+  </div>
+</div>
 
-    <!-- Bootstrap JS Bundle (includes Popper) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    {% block scripts %}{% endblock %}
+<!-- Mobile topbar -->
+<div class="mobile-topbar d-lg-none">
+  <button class="btn btn-link" id="sidebarToggle">
+    <i class="bi bi-list fs-4"></i>
+  </button>
+  <span class="fw-bold">FaceAttend</span>
+</div>
+{% endif %}
+
+<!-- ── Main content ──────────────────────────────────────────────────────── -->
+<div class="main-content {% if not session.teacher_id %}full-width{% endif %}">
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-container">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Sidebar toggle for mobile
+  const toggle = document.getElementById('sidebarToggle');
+  const sidebar = document.getElementById('sidebar');
+  if (toggle && sidebar) {
+    toggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+  }
+
+  // Toast helper — available globally
+  function showToast(message, type = 'success', duration = 4000) {
+    const id = 'toast-' + Date.now();
+    const iconMap = { success: 'check-circle-fill', danger: 'x-circle-fill',
+                      warning: 'exclamation-triangle-fill', info: 'info-circle-fill' };
+    const icon = iconMap[type] || 'info-circle-fill';
+    const html = `
+      <div id="${id}" class="toast align-items-center text-bg-${type} border-0" role="alert" aria-live="assertive">
+        <div class="d-flex">
+          <div class="toast-body">
+            <i class="bi bi-${icon} me-2"></i>${message}
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+      </div>`;
+    document.getElementById('toastContainer').insertAdjacentHTML('beforeend', html);
+    const el = document.getElementById(id);
+    const t = new bootstrap.Toast(el, { delay: duration });
+    t.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+  }
+</script>
+
+{% block scripts %}{% endblock %}
 </body>
 </html>

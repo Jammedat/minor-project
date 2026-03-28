@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Mark Attendance{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Mark Attendance</h1>
+    <p class="page-sub">
+      {{ session.subject_name }} &nbsp;·&nbsp; {{ session.dept_name }} / {{ session.batch_name }}
+      <span class="badge bg-primary ms-1">{{ today_records|length }}/{{ total_students }} marked</span>
+    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <!-- Recognition mode toggle -->
+    <div class="btn-group" role="group">
+      <input type="radio" class="btn-check" name="mode" id="modeFace" value="face" checked/>
+      <label class="btn btn-outline-primary btn-sm" for="modeFace">
+        <i class="bi bi-person-bounding-box me-1"></i>Face
+      </label>
+      <input type="radio" class="btn-check" name="mode" id="modeIris" value="iris"/>
+      <label class="btn btn-outline-purple btn-sm" for="modeIris">
+        <i class="bi bi-eye me-1"></i>Iris
+      </label>
+    </div>
+    <a href="{{ url_for('attendance_report') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-bar-chart me-1"></i>Report
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- ── Camera panel ─────────────────────────────────────────────────────── -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-camera-video me-2"></i>Camera Feed</span>
+        <div class="d-flex align-items-center gap-2">
+          <span id="scanStatus" class="badge bg-secondary">Initializing…</span>
+          <button id="cameraBtn" class="btn btn-sm btn-success" onclick="toggleCamera()">
+            <i class="bi bi-play-fill me-1"></i>Start
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-2">
+        <div class="camera-wrap" style="background:#111">
+          <video id="video" autoplay muted playsinline class="camera-feed"></video>
+          <!-- Match overlay -->
+          <div id="matchOverlay" class="match-overlay d-none">
+            <div class="match-box" id="matchBox">
+              <div class="match-name" id="matchName"></div>
+              <div class="match-roll" id="matchRoll"></div>
+              <div class="match-conf" id="matchConf"></div>
+            </div>
+          </div>
+        </div>
+        <canvas id="snap" style="display:none"></canvas>
+      </div>
+      <div class="card-footer">
+        <div class="d-flex justify-content-between align-items-center">
+          <small class="text-muted" id="frameInfo">Camera not started</small>
+          <div class="d-flex align-items-center gap-3">
+            <small class="text-muted">Scan every</small>
+            <select class="form-select form-select-sm w-auto" id="intervalSel">
+              <option value="1500">1.5s</option>
+              <option value="2000" selected>2s</option>
+              <option value="3000">3s</option>
+              <option value="5000">5s</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right panel: marked list ─────────────────────────────────────────── -->
+  <div class="col-lg-5">
+    <!-- Today's summary -->
+    <div class="card mb-3">
+      <div class="card-body py-3">
+        <div class="row text-center g-0">
+          <div class="col border-end">
+            <div class="fs-3 fw-bold text-success" id="countPresent">{{ today_records|length }}</div>
+            <div class="small text-muted">Present</div>
+          </div>
+          <div class="col border-end">
+            <div class="fs-3 fw-bold text-danger" id="countAbsent">{{ total_students - today_records|length }}</div>
+            <div class="small text-muted">Absent</div>
+          </div>
+          <div class="col">
+            <div class="fs-3 fw-bold text-primary">{{ total_students }}</div>
+            <div class="small text-muted">Total</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Marked students list -->
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-check-circle me-2 text-success"></i>Marked Today</span>
+        <span class="badge bg-success" id="markedBadge">{{ today_records|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="marked-list" id="markedList">
+          {% for r in today_records %}
+          <div class="marked-item" id="marked-{{ r.student_id if r.get else r['roll_no'] }}">
+            <div class="marked-avatar">{{ r.name[0]|upper }}</div>
+            <div class="marked-info">
+              <div class="marked-name">{{ r.name }}</div>
+              <div class="marked-meta">
+                <code>{{ r.roll_no }}</code> &nbsp;·&nbsp;
+                {{ r.time }} &nbsp;·&nbsp;
+                <span class="badge bg-{{ 'primary' if r.method == 'face' else 'purple' }} badge-sm">
+                  {{ r.method }}
+                </span>
+              </div>
+            </div>
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-4 small" id="emptyMsg">
+            <i class="bi bi-clock fs-2 d-block mb-2 opacity-25"></i>
+            No one marked yet. Start the camera.
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
+{% endblock %}

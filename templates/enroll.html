@@ -1,62 +1,275 @@
 {% extends "base.html" %}
+{% block title %}Enroll — {{ student.name }}{% endblock %}
+
 {% block content %}
-<h2>Enroll Face Photos for {{ student.name }} ({{ student.roll_no }})</h2>
-<div class="row">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Use Webcam</div>
-            <div class="card-body">
-                <video id="webcam" autoplay playsinline width="100%"></video>
-                <button id="capture" class="btn btn-primary mt-2">Capture Photo</button>
-                <canvas id="canvas" style="display:none;"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">Upload Photos</div>
-            <div class="card-body">
-                <form method="post" enctype="multipart/form-data">
-                    <input type="file" name="photos" multiple accept="image/*" class="form-control mb-2">
-                    <button type="submit" class="btn btn-success">Enroll Uploaded</button>
-                </form>
-                <hr>
-                <p>Currently enrolled photos: <strong>{{ count }}</strong> (need at least 3 for reliable recognition)</p>
-                <a href="{{ url_for('students') }}" class="btn btn-secondary">Back to Students</a>
-            </div>
-        </div>
-    </div>
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('students') }}" class="btn btn-sm btn-outline-secondary mb-2">
+      <i class="bi bi-arrow-left me-1"></i>Back to Students
+    </a>
+    <h1 class="page-title">Enroll Biometrics</h1>
+    <p class="page-sub">
+      <code>{{ student.roll_no }}</code> &nbsp;{{ student.name }}
+    </p>
+  </div>
 </div>
+
+<!-- Progress bar -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card text-center">
+      <div class="card-body py-3">
+        <div class="enroll-counter" id="faceCounter">{{ student.face_photos }}/3</div>
+        <div class="text-muted small">Face Photos</div>
+        <div class="progress mt-2" style="height:6px">
+          <div class="progress-bar bg-primary" id="faceBar"
+               style="width:{{ [student.face_photos / 3 * 100, 100]|min }}%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card text-center">
+      <div class="card-body py-3">
+        <div class="enroll-counter" id="irisCounter">{{ student.iris_photos }}/3</div>
+        <div class="text-muted small">Iris Photos</div>
+        <div class="progress mt-2" style="height:6px">
+          <div class="progress-bar bg-purple" id="irisBar"
+               style="width:{{ [student.iris_photos / 3 * 100, 100]|min }}%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mode tabs -->
+<ul class="nav nav-tabs mb-3" id="enrollTabs">
+  <li class="nav-item">
+    <button class="nav-link active" id="faceTab" onclick="setMode('face')">
+      <i class="bi bi-person-bounding-box me-2"></i>Face
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" id="irisTab" onclick="setMode('iris')">
+      <i class="bi bi-eye me-2"></i>Iris
+    </button>
+  </li>
+</ul>
+
+<div id="modeHint" class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle me-1"></i>
+  <strong>Face mode:</strong> Look directly at the camera. Capture at least 3 photos for reliable recognition.
+</div>
+
+<div class="row g-4">
+  <!-- Camera -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-camera-video me-2"></i>Live Camera</span>
+        <span class="live-dot-badge" id="liveBadge">
+          <span class="live-dot"></span> LIVE
+        </span>
+      </div>
+      <div class="card-body p-2">
+        <div class="camera-wrap">
+          <video id="video" autoplay muted playsinline class="camera-feed"></video>
+          <canvas id="overlay" class="camera-overlay"></canvas>
+        </div>
+        <canvas id="snap" style="display:none"></canvas>
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <button class="btn btn-primary flex-fill" id="captureBtn" onclick="captureAndEnroll()">
+          <i class="bi bi-camera me-2"></i>Capture Photo
+        </button>
+        <button class="btn btn-outline-secondary" onclick="uploadPhoto()" title="Upload from file">
+          <i class="bi bi-upload"></i>
+        </button>
+        <input type="file" id="fileInput" accept="image/*" style="display:none"
+               onchange="uploadAndEnroll(this)"/>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructions + result -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span><i class="bi bi-list-check me-2"></i>Enrollment Guide</span>
+      </div>
+      <div class="card-body">
+        <div id="enrollResult" class="enroll-result-box mb-3">
+          <div class="text-muted text-center py-3">
+            <i class="bi bi-camera fs-1 d-block mb-2 opacity-25"></i>
+            Click "Capture Photo" to begin enrollment
+          </div>
+        </div>
+
+        <div id="faceTips">
+          <p class="fw-semibold mb-2">Face Enrollment Tips:</p>
+          <ul class="small text-muted">
+            <li>Ensure good, even lighting on your face</li>
+            <li>Look directly at the camera</li>
+            <li>Capture 3+ photos in slightly different angles</li>
+            <li>Remove glasses if possible for better accuracy</li>
+            <li>Keep face centered in the frame</li>
+          </ul>
+        </div>
+        <div id="irisTips" style="display:none">
+          <p class="fw-semibold mb-2">Iris Enrollment Tips:</p>
+          <ul class="small text-muted">
+            <li>Hold camera 25–40 cm from your face</li>
+            <li>Use bright, even lighting</li>
+            <li>Remove glasses or contact lenses</li>
+            <li>Open your eye wide, look directly at camera</li>
+            <li>Capture 3+ photos for reliability</li>
+          </ul>
+        </div>
+
+        {% if student.face_photos >= 3 %}
+        <div class="alert alert-success py-2 small mt-3">
+          <i class="bi bi-check-circle me-1"></i>
+          Face enrolled! You can still add more photos to improve accuracy.
+        </div>
+        {% endif %}
+        {% if student.iris_photos >= 3 %}
+        <div class="alert alert-success py-2 small mt-2">
+          <i class="bi bi-check-circle me-1"></i>
+          Iris enrolled! You can still add more photos to improve accuracy.
+        </div>
+        {% endif %}
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <button class="btn btn-sm btn-outline-warning" onclick="clearPhotos('face')">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Face
+        </button>
+        <button class="btn btn-sm btn-outline-warning" onclick="clearPhotos('iris')">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Iris
+        </button>
+        <a href="{{ url_for('students') }}" class="btn btn-sm btn-primary ms-auto">
+          Done <i class="bi bi-arrow-right ms-1"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-    // Webcam capture script
-    const video = document.getElementById('webcam');
-    const canvas = document.getElementById('canvas');
-    const captureBtn = document.getElementById('capture');
+const STUDENT_ID = {{ student.id }};
+let currentMode  = 'face';
+let facePhotos   = {{ student.face_photos }};
+let irisPhotos   = {{ student.iris_photos }};
+let stream       = null;
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => console.error("Error accessing webcam: ", err));
+// ── Camera start ──────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    document.getElementById('video').srcObject = stream;
+  } catch (e) {
+    document.getElementById('enrollResult').innerHTML =
+      `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>
+      Camera access denied. Please allow camera access in your browser.</div>`;
+  }
+}
+
+startCamera();
+
+// ── Mode switching ─────────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('faceTab').classList.toggle('active', mode === 'face');
+  document.getElementById('irisTab').classList.toggle('active', mode === 'iris');
+  document.getElementById('faceTips').style.display = mode === 'face' ? '' : 'none';
+  document.getElementById('irisTips').style.display = mode === 'iris' ? '' : 'none';
+  document.getElementById('modeHint').innerHTML = mode === 'face'
+    ? '<i class="bi bi-info-circle me-1"></i><strong>Face mode:</strong> Look directly at the camera. Capture at least 3 photos.'
+    : '<i class="bi bi-info-circle me-1"></i><strong>Iris mode:</strong> Hold camera 25–40 cm away. Open eye wide. Good lighting required.';
+}
+
+// ── Capture ───────────────────────────────────────────────────────────────────
+async function captureAndEnroll() {
+  const video  = document.getElementById('video');
+  const canvas = document.getElementById('snap');
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const b64 = canvas.toDataURL('image/jpeg', 0.85);
+  await enroll(b64);
+}
+
+function uploadPhoto() {
+  document.getElementById('fileInput').click();
+}
+
+function uploadAndEnroll(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => await enroll(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+async function enroll(imageB64) {
+  const btn = document.getElementById('captureBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
+
+  try {
+    const r = await fetch(`/api/students/${STUDENT_ID}/enroll`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: currentMode, image: imageB64 })
+    }).then(r => r.json());
+
+    updateResult(r);
+
+    if (r.ok) {
+      facePhotos = r.face_photos;
+      irisPhotos = r.iris_photos;
+      updateCounters();
     }
+  } catch (e) {
+    updateResult({ok: false, message: 'Network error: ' + e});
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-camera me-2"></i>Capture Photo';
+  }
+}
 
-    captureBtn.addEventListener('click', () => {
-        const context = canvas.getContext('2d');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        // Convert canvas to blob and submit via form or AJAX
-        canvas.toBlob(blob => {
-            const formData = new FormData();
-            formData.append('photos', blob, 'webcam_capture.jpg');
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            }).then(response => {
-                window.location.reload();
-            }).catch(err => console.error(err));
-        }, 'image/jpeg');
-    });
+function updateResult(r) {
+  const box = document.getElementById('enrollResult');
+  if (r.ok) {
+    box.innerHTML = `<div class="alert alert-success mb-0">
+      <i class="bi bi-check-circle-fill me-2"></i>${r.message}</div>`;
+  } else {
+    box.innerHTML = `<div class="alert alert-danger mb-0">
+      <i class="bi bi-exclamation-circle me-2"></i>${r.message}</div>`;
+  }
+}
+
+function updateCounters() {
+  const fc = document.getElementById('faceCounter');
+  const ic = document.getElementById('irisCounter');
+  fc.textContent = `${facePhotos}/3`;
+  ic.textContent = `${irisPhotos}/3`;
+  document.getElementById('faceBar').style.width = Math.min(facePhotos / 3 * 100, 100) + '%';
+  document.getElementById('irisBar').style.width = Math.min(irisPhotos / 3 * 100, 100) + '%';
+}
+
+async function clearPhotos(type) {
+  if (!confirm(`Clear all ${type} photos for this student?`)) return;
+  const r = await fetch(`/api/students/${STUDENT_ID}/clear-embeddings`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({type})
+  }).then(r => r.json());
+  showToast(r.message, r.ok ? 'success' : 'danger');
+  if (r.ok) {
+    if (type === 'face') facePhotos = 0;
+    else irisPhotos = 0;
+    updateCounters();
+  }
+}
 </script>
 {% endblock %}
