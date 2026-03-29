@@ -13,13 +13,17 @@
   <div class="d-flex align-items-center gap-2">
     <!-- Recognition mode toggle -->
     <div class="btn-group" role="group">
-      <input type="radio" class="btn-check" name="mode" id="modeFace" value="face" checked/>
+      <input type="radio" class="btn-check" name="mode" id="modeFace" value="face" checked
+             onchange="checkModeWarning('face')"/>
       <label class="btn btn-outline-primary btn-sm" for="modeFace">
         <i class="bi bi-person-bounding-box me-1"></i>Face
+        <span class="badge bg-primary ms-1">{{ face_enrolled }}</span>
       </label>
-      <input type="radio" class="btn-check" name="mode" id="modeIris" value="iris"/>
+      <input type="radio" class="btn-check" name="mode" id="modeIris" value="iris"
+             onchange="checkModeWarning('iris')"/>
       <label class="btn btn-outline-purple btn-sm" for="modeIris">
         <i class="bi bi-eye me-1"></i>Iris
+        <span class="badge bg-secondary ms-1">{{ iris_enrolled }}</span>
       </label>
     </div>
     <a href="{{ url_for('attendance_report') }}" class="btn btn-sm btn-outline-secondary">
@@ -29,6 +33,15 @@
 </div>
 
 <div class="row g-4">
+  <!-- Iris warning banner -->
+  <div class="col-12" id="irisWarning" style="display:none">
+    <div class="alert alert-warning py-2 small mb-0">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <strong>{{ iris_enrolled }} of {{ total_students }}</strong> students have iris enrolled in this batch.
+      Students without iris enrollment will not be recognised in iris mode.
+      <a href="{{ url_for('students') }}" class="alert-link ms-1">Enroll iris photos →</a>
+    </div>
+  </div>
   <!-- ── Camera panel ─────────────────────────────────────────────────────── -->
   <div class="col-lg-7">
     <div class="card">
@@ -131,4 +144,11 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
+<script>
+const IRIS_ENROLLED = {{ iris_enrolled }};
+function checkModeWarning(mode) {
+  const warn = document.getElementById('irisWarning');
+  warn.style.display = (mode === 'iris' && IRIS_ENROLLED === 0) ? '' : 'none';
+}
+</script>
 {% endblock %}

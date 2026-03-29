@@ -101,16 +101,15 @@ def init_db():
 def _seed(conn):
     """Insert default departments, batches, and subjects if not present."""
     depts = [
-        ('Computer Science',            ['Data Structures','Algorithms','Database Management',
-                                          'Operating Systems','Computer Networks','Machine Learning']),
-        ('Electronics & Communication', ['Digital Electronics','Signals & Systems','Microprocessors',
-                                          'Communication Systems','VLSI Design']),
-        ('Mechanical',                  ['Thermodynamics','Fluid Mechanics','Machine Design',
-                                          'Manufacturing Processes','Engineering Materials']),
-        ('Civil',                       ['Structural Analysis','Geotechnical Engineering',
-                                          'Transportation Engineering','Environmental Engineering']),
+        ('BCT',            ['Data Structures & Algorithms','Database Management',
+                                          'Operating Systems','Artificial Intelligence']),
+        ('BEI', ['Digital Electronics','Database Management','Microprocessors',
+                                          'Data Structures & Algorithms']),
+        ('BME',                  ['Fluid Mechanics', 'Engineering Materials']),
+        ('BCE',                       ['Structural Analysis','Hydraulics',
+                                          'Transportation Engineering']),
     ]
-    batches = ['2021-25', '2022-26', '2023-27', '2024-28']
+    batches = ['078', '079', '080', '081']
 
     for dept_name, subjects in depts:
         conn.execute('INSERT OR IGNORE INTO departments (name) VALUES (?)', (dept_name,))

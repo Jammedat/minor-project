@@ -9,147 +9,152 @@
     </a>
     <h1 class="page-title">Enroll Biometrics</h1>
     <p class="page-sub">
-      <code>{{ student.roll_no }}</code> &nbsp;{{ student.name }}
+      <code class="text-primary">{{ student.roll_no }}</code> &nbsp;·&nbsp;
+      <strong>{{ student.name }}</strong>
     </p>
   </div>
 </div>
 
-<!-- Progress bar -->
+<!-- ── Progress counters ──────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
-  <div class="col-md-6">
-    <div class="card text-center">
-      <div class="card-body py-3">
-        <div class="enroll-counter" id="faceCounter">{{ student.face_photos }}/3</div>
-        <div class="text-muted small">Face Photos</div>
-        <div class="progress mt-2" style="height:6px">
-          <div class="progress-bar bg-primary" id="faceBar"
-               style="width:{{ [student.face_photos / 3 * 100, 100]|min }}%"></div>
-        </div>
+  <div class="col-6 col-md-3">
+    <div class="enroll-status-card">
+      <div class="esc-icon">😐</div>
+      <div class="esc-count text-primary" id="faceCount">{{ student.face_photos }}</div>
+      <div class="esc-label">Face Photos</div>
+      <div class="esc-bar">
+        <div class="esc-fill bg-primary" id="faceFill"
+             style="width:{{ [student.face_photos/3*100,100]|min }}%"></div>
       </div>
+      <div class="esc-min">Min 3 required</div>
     </div>
   </div>
-  <div class="col-md-6">
-    <div class="card text-center">
-      <div class="card-body py-3">
-        <div class="enroll-counter" id="irisCounter">{{ student.iris_photos }}/3</div>
-        <div class="text-muted small">Iris Photos</div>
-        <div class="progress mt-2" style="height:6px">
-          <div class="progress-bar bg-purple" id="irisBar"
-               style="width:{{ [student.iris_photos / 3 * 100, 100]|min }}%"></div>
-        </div>
+  <div class="col-6 col-md-3">
+    <div class="enroll-status-card">
+      <div class="esc-icon">👁️</div>
+      <div class="esc-count text-purple" id="irisCount">{{ student.iris_photos }}</div>
+      <div class="esc-label">Iris Photos</div>
+      <div class="esc-bar">
+        <div class="esc-fill bg-purple" id="irisFill"
+             style="width:{{ [student.iris_photos/3*100,100]|min }}%"></div>
       </div>
+      <div class="esc-min">Min 3 required</div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6">
+    <div class="card h-100 p-3">
+      <p class="fw-semibold mb-1 small text-muted text-uppercase">
+        <i class="bi bi-info-circle me-1"></i>Quick Guide
+      </p>
+      <ul class="small text-muted mb-0 ps-3">
+        <li>Use <strong>Face tab</strong> to capture face photos, <strong>Iris tab</strong> for iris photos. They are stored separately.</li>
+        <li>Capture <strong>3 or more</strong> photos per type. More = better accuracy.</li>
+        <li>Iris attendance will <strong>only work</strong> if iris photos are enrolled here.</li>
+      </ul>
     </div>
   </div>
 </div>
 
-<!-- Mode tabs -->
-<ul class="nav nav-tabs mb-3" id="enrollTabs">
+<!-- ── Mode tabs ──────────────────────────────────────────────────────────── -->
+<ul class="nav nav-tabs mb-0 border-bottom-0">
   <li class="nav-item">
-    <button class="nav-link active" id="faceTab" onclick="setMode('face')">
+    <button class="nav-link active" id="faceTabBtn" onclick="switchMode('face')">
       <i class="bi bi-person-bounding-box me-2"></i>Face
+      <span class="badge bg-primary ms-1" id="faceBadge">{{ student.face_photos }}/3</span>
     </button>
   </li>
   <li class="nav-item">
-    <button class="nav-link" id="irisTab" onclick="setMode('iris')">
+    <button class="nav-link" id="irisTabBtn" onclick="switchMode('iris')">
       <i class="bi bi-eye me-2"></i>Iris
+      <span class="badge bg-secondary ms-1" id="irisBadge">{{ student.iris_photos }}/3</span>
     </button>
   </li>
 </ul>
 
-<div id="modeHint" class="alert alert-info py-2 small mb-3">
-  <i class="bi bi-info-circle me-1"></i>
-  <strong>Face mode:</strong> Look directly at the camera. Capture at least 3 photos for reliable recognition.
-</div>
+<div class="card border-top-0" style="border-radius:0 0 10px 10px">
+  <div class="card-body">
+    <div class="row g-4">
 
-<div class="row g-4">
-  <!-- Camera -->
-  <div class="col-lg-6">
-    <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <span><i class="bi bi-camera-video me-2"></i>Live Camera</span>
-        <span class="live-dot-badge" id="liveBadge">
-          <span class="live-dot"></span> LIVE
-        </span>
-      </div>
-      <div class="card-body p-2">
+      <!-- Camera panel -->
+      <div class="col-lg-6">
+        <div id="modeBanner" class="alert alert-primary py-2 small mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          <strong>Face mode:</strong> Look directly at the camera. Centre your face. Capture 3+ photos.
+        </div>
+
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="fw-semibold small">Live Camera</span>
+          <span class="live-dot-badge"><span class="live-dot"></span> LIVE</span>
+        </div>
+
         <div class="camera-wrap">
           <video id="video" autoplay muted playsinline class="camera-feed"></video>
-          <canvas id="overlay" class="camera-overlay"></canvas>
         </div>
-        <canvas id="snap" style="display:none"></canvas>
-      </div>
-      <div class="card-footer d-flex gap-2">
-        <button class="btn btn-primary flex-fill" id="captureBtn" onclick="captureAndEnroll()">
-          <i class="bi bi-camera me-2"></i>Capture Photo
-        </button>
-        <button class="btn btn-outline-secondary" onclick="uploadPhoto()" title="Upload from file">
-          <i class="bi bi-upload"></i>
-        </button>
-        <input type="file" id="fileInput" accept="image/*" style="display:none"
-               onchange="uploadAndEnroll(this)"/>
-      </div>
-    </div>
-  </div>
 
-  <!-- Instructions + result -->
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-header">
-        <span><i class="bi bi-list-check me-2"></i>Enrollment Guide</span>
+        <div class="d-flex gap-2 mt-2">
+          <button class="btn btn-primary flex-fill" id="captureBtn" onclick="capturePhoto()">
+            <i class="bi bi-camera me-2"></i>Capture Photo
+          </button>
+          <button class="btn btn-outline-secondary" title="Upload image from file"
+                  onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-upload"></i>
+          </button>
+          <input type="file" id="fileInput" accept="image/*" style="display:none"
+                 onchange="uploadPhoto(this)"/>
+        </div>
       </div>
-      <div class="card-body">
-        <div id="enrollResult" class="enroll-result-box mb-3">
+
+      <!-- Tips + result panel -->
+      <div class="col-lg-6 d-flex flex-column">
+        <div class="fw-semibold small mb-2">Last Capture Result</div>
+        <div id="captureResult" class="enroll-result-box mb-3">
           <div class="text-muted text-center py-3">
-            <i class="bi bi-camera fs-1 d-block mb-2 opacity-25"></i>
-            Click "Capture Photo" to begin enrollment
+            <i class="bi bi-camera fs-2 d-block mb-2 opacity-25"></i>
+            Click "Capture Photo" to begin
           </div>
         </div>
 
+        <!-- Face tips -->
         <div id="faceTips">
-          <p class="fw-semibold mb-2">Face Enrollment Tips:</p>
-          <ul class="small text-muted">
-            <li>Ensure good, even lighting on your face</li>
-            <li>Look directly at the camera</li>
-            <li>Capture 3+ photos in slightly different angles</li>
-            <li>Remove glasses if possible for better accuracy</li>
-            <li>Keep face centered in the frame</li>
-          </ul>
-        </div>
-        <div id="irisTips" style="display:none">
-          <p class="fw-semibold mb-2">Iris Enrollment Tips:</p>
-          <ul class="small text-muted">
-            <li>Hold camera 25–40 cm from your face</li>
-            <li>Use bright, even lighting</li>
-            <li>Remove glasses or contact lenses</li>
-            <li>Open your eye wide, look directly at camera</li>
-            <li>Capture 3+ photos for reliability</li>
-          </ul>
+          <p class="fw-semibold small mb-2">Face Enrollment Tips</p>
+          <div class="tip-grid">
+            <div class="tip-item"><i class="bi bi-lightbulb text-warning"></i>Good, even lighting on your face</div>
+            <div class="tip-item"><i class="bi bi-camera text-primary"></i>Look directly at the camera</div>
+            <div class="tip-item"><i class="bi bi-arrows-angle-contract text-success"></i>Face takes up ~50% of frame</div>
+            <div class="tip-item"><i class="bi bi-arrow-repeat text-info"></i>Capture 3+ slightly different angles</div>
+            <div class="tip-item"><i class="bi bi-eyeglasses text-secondary"></i>Remove glasses if possible</div>
+            <div class="tip-item"><i class="bi bi-emoji-neutral text-secondary"></i>Neutral expression</div>
+          </div>
         </div>
 
-        {% if student.face_photos >= 3 %}
-        <div class="alert alert-success py-2 small mt-3">
-          <i class="bi bi-check-circle me-1"></i>
-          Face enrolled! You can still add more photos to improve accuracy.
+        <!-- Iris tips -->
+        <div id="irisTips" style="display:none">
+          <p class="fw-semibold small mb-2">Iris Enrollment Tips</p>
+          <div class="tip-grid">
+            <div class="tip-item"><i class="bi bi-rulers text-primary"></i>Camera <strong>25–40 cm</strong> from eye</div>
+            <div class="tip-item"><i class="bi bi-lightbulb text-warning"></i>Bright, even lighting, no glare</div>
+            <div class="tip-item"><i class="bi bi-eye text-success"></i>Open eye as <strong>wide</strong> as possible</div>
+            <div class="tip-item"><i class="bi bi-camera text-info"></i>Look directly at the camera lens</div>
+            <div class="tip-item"><i class="bi bi-eyeglasses text-danger"></i>Remove glasses <strong>and</strong> contacts</div>
+            <div class="tip-item"><i class="bi bi-arrow-repeat text-secondary"></i>Capture 3+ photos minimum</div>
+          </div>
+          <div class="alert alert-warning py-2 small mt-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Iris photos are stored separately. Iris attendance won't work from face photos only.
+          </div>
         </div>
-        {% endif %}
-        {% if student.iris_photos >= 3 %}
-        <div class="alert alert-success py-2 small mt-2">
-          <i class="bi bi-check-circle me-1"></i>
-          Iris enrolled! You can still add more photos to improve accuracy.
+
+        <div class="mt-auto pt-3 d-flex gap-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-warning" onclick="clearPhotos()">
+            <i class="bi bi-arrow-counterclockwise me-1"></i>
+            Clear <span id="clearLabel">Face</span> Photos
+          </button>
+          <a href="{{ url_for('students') }}" class="btn btn-sm btn-primary ms-auto">
+            Done <i class="bi bi-arrow-right ms-1"></i>
+          </a>
         </div>
-        {% endif %}
       </div>
-      <div class="card-footer d-flex gap-2">
-        <button class="btn btn-sm btn-outline-warning" onclick="clearPhotos('face')">
-          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Face
-        </button>
-        <button class="btn btn-sm btn-outline-warning" onclick="clearPhotos('iris')">
-          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Iris
-        </button>
-        <a href="{{ url_for('students') }}" class="btn btn-sm btn-primary ms-auto">
-          Done <i class="bi bi-arrow-right ms-1"></i>
-        </a>
-      </div>
+
     </div>
   </div>
 </div>
@@ -158,118 +163,124 @@
 {% block scripts %}
 <script>
 const STUDENT_ID = {{ student.id }};
-let currentMode  = 'face';
-let facePhotos   = {{ student.face_photos }};
-let irisPhotos   = {{ student.iris_photos }};
-let stream       = null;
+let currentMode = 'face';
+let facePhotos  = {{ student.face_photos }};
+let irisPhotos  = {{ student.iris_photos }};
 
-// ── Camera start ──────────────────────────────────────────────────────────────
-async function startCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-    document.getElementById('video').srcObject = stream;
-  } catch (e) {
-    document.getElementById('enrollResult').innerHTML =
-      `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>
-      Camera access denied. Please allow camera access in your browser.</div>`;
-  }
-}
+// ── Camera ────────────────────────────────────────────────────────────────────
+const video = document.getElementById('video');
+navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+  .then(s => { video.srcObject = s; })
+  .catch(() => {
+    document.querySelector('.camera-wrap').innerHTML =
+      '<div class="alert alert-danger m-3">Camera access denied. Allow permission and reload.</div>';
+  });
 
-startCamera();
-
-// ── Mode switching ─────────────────────────────────────────────────────────────
-function setMode(mode) {
+// ── Mode switch ───────────────────────────────────────────────────────────────
+function switchMode(mode) {
   currentMode = mode;
-  document.getElementById('faceTab').classList.toggle('active', mode === 'face');
-  document.getElementById('irisTab').classList.toggle('active', mode === 'iris');
-  document.getElementById('faceTips').style.display = mode === 'face' ? '' : 'none';
-  document.getElementById('irisTips').style.display = mode === 'iris' ? '' : 'none';
-  document.getElementById('modeHint').innerHTML = mode === 'face'
-    ? '<i class="bi bi-info-circle me-1"></i><strong>Face mode:</strong> Look directly at the camera. Capture at least 3 photos.'
-    : '<i class="bi bi-info-circle me-1"></i><strong>Iris mode:</strong> Hold camera 25–40 cm away. Open eye wide. Good lighting required.';
+  document.getElementById('faceTabBtn').classList.toggle('active', mode === 'face');
+  document.getElementById('irisTabBtn').classList.toggle('active', mode === 'iris');
+  document.getElementById('faceTips').style.display  = mode === 'face' ? '' : 'none';
+  document.getElementById('irisTips').style.display  = mode === 'iris' ? '' : 'none';
+  document.getElementById('clearLabel').textContent  = mode === 'face' ? 'Face' : 'Iris';
+  document.getElementById('modeBanner').innerHTML = mode === 'face'
+    ? '<i class="bi bi-info-circle me-1"></i><strong>Face mode:</strong> Look directly at camera. Centre your face. Capture 3+ photos.'
+    : '<i class="bi bi-info-circle me-1"></i><strong>Iris mode:</strong> Hold camera 25–40 cm from eye. Open eye wide. Separate photos needed for iris attendance.';
 }
 
 // ── Capture ───────────────────────────────────────────────────────────────────
-async function captureAndEnroll() {
-  const video  = document.getElementById('video');
-  const canvas = document.getElementById('snap');
-  canvas.width  = video.videoWidth  || 640;
-  canvas.height = video.videoHeight || 480;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  const b64 = canvas.toDataURL('image/jpeg', 0.85);
-  await enroll(b64);
+async function capturePhoto() {
+  if (!video.videoWidth) { showToast('Camera not ready yet.', 'warning'); return; }
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  const ctx = c.getContext('2d');
+  // Un-mirror before sending to backend
+  ctx.translate(c.width, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0);
+  await enroll(c.toDataURL('image/jpeg', 0.85));
 }
 
-function uploadPhoto() {
-  document.getElementById('fileInput').click();
-}
-
-function uploadAndEnroll(input) {
-  const file = input.files[0];
-  if (!file) return;
+function uploadPhoto(input) {
+  const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => await enroll(e.target.result);
   reader.readAsDataURL(file);
+  input.value = '';  // allow re-selecting same file
 }
 
-async function enroll(imageB64) {
+async function enroll(b64) {
   const btn = document.getElementById('captureBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…';
 
   try {
     const r = await fetch(`/api/students/${STUDENT_ID}/enroll`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ type: currentMode, image: imageB64 })
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: currentMode, image: b64 })
     }).then(r => r.json());
 
-    updateResult(r);
+    document.getElementById('captureResult').innerHTML = r.ok
+      ? `<div class="alert alert-success mb-0">
+           <i class="bi bi-check-circle-fill me-2"></i>${r.message}
+         </div>`
+      : `<div class="alert alert-danger mb-0">
+           <i class="bi bi-x-circle-fill me-2"></i>${r.message}
+         </div>`;
 
     if (r.ok) {
       facePhotos = r.face_photos;
       irisPhotos = r.iris_photos;
       updateCounters();
+      showToast(`Photo ${currentMode === 'face' ? facePhotos : irisPhotos} saved (${currentMode})`, 'success');
     }
   } catch (e) {
-    updateResult({ok: false, message: 'Network error: ' + e});
+    document.getElementById('captureResult').innerHTML =
+      `<div class="alert alert-danger mb-0">Network error: ${e}</div>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-camera me-2"></i>Capture Photo';
   }
 }
 
-function updateResult(r) {
-  const box = document.getElementById('enrollResult');
-  if (r.ok) {
-    box.innerHTML = `<div class="alert alert-success mb-0">
-      <i class="bi bi-check-circle-fill me-2"></i>${r.message}</div>`;
-  } else {
-    box.innerHTML = `<div class="alert alert-danger mb-0">
-      <i class="bi bi-exclamation-circle me-2"></i>${r.message}</div>`;
-  }
-}
-
+// ── Counters ──────────────────────────────────────────────────────────────────
 function updateCounters() {
-  const fc = document.getElementById('faceCounter');
-  const ic = document.getElementById('irisCounter');
-  fc.textContent = `${facePhotos}/3`;
-  ic.textContent = `${irisPhotos}/3`;
-  document.getElementById('faceBar').style.width = Math.min(facePhotos / 3 * 100, 100) + '%';
-  document.getElementById('irisBar').style.width = Math.min(irisPhotos / 3 * 100, 100) + '%';
+  document.getElementById('faceCount').textContent = facePhotos;
+  document.getElementById('irisCount').textContent = irisPhotos;
+  document.getElementById('faceBadge').textContent = `${facePhotos}/3`;
+  document.getElementById('irisBadge').textContent = `${irisPhotos}/3`;
+  document.getElementById('faceBadge').className = `badge ms-1 ${facePhotos >= 3 ? 'bg-success' : 'bg-primary'}`;
+  document.getElementById('irisBadge').className = `badge ms-1 ${irisPhotos >= 3 ? 'bg-success' : 'bg-secondary'}`;
+  document.getElementById('faceFill').style.width = Math.min(facePhotos/3*100, 100) + '%';
+  document.getElementById('irisFill').style.width = Math.min(irisPhotos/3*100, 100) + '%';
 }
 
-async function clearPhotos(type) {
-  if (!confirm(`Clear all ${type} photos for this student?`)) return;
+async function clearPhotos() {
+  if (!confirm(`Delete all ${currentMode} photos for this student?`)) return;
   const r = await fetch(`/api/students/${STUDENT_ID}/clear-embeddings`, {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({type})
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: currentMode })
   }).then(r => r.json());
   showToast(r.message, r.ok ? 'success' : 'danger');
   if (r.ok) {
-    if (type === 'face') facePhotos = 0;
-    else irisPhotos = 0;
+    if (currentMode === 'face') facePhotos = 0; else irisPhotos = 0;
     updateCounters();
   }
 }
 </script>
+
+<style>
+.enroll-status-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px; text-align:center; height:100%; }
+.esc-icon  { font-size:24px; }
+.esc-count { font-size:28px; font-weight:800; }
+.esc-label { font-size:12px; color:#64748b; margin-bottom:6px; }
+.esc-bar   { background:#e2e8f0; border-radius:4px; height:5px; overflow:hidden; }
+.esc-fill  { height:100%; border-radius:4px; transition:width .4s; }
+.esc-min   { font-size:10px; color:#94a3b8; margin-top:4px; }
+.text-purple { color:#7c3aed!important; }
+.bg-purple   { background-color:#7c3aed!important; }
+.tip-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.tip-item { display:flex; align-items:flex-start; gap:6px; font-size:12px; color:#475569; }
+.tip-item i { flex-shrink:0; margin-top:1px; }
+</style>
 {% endblock %}

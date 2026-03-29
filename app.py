@@ -17,9 +17,12 @@ from flask import (
     session, jsonify, flash, Response, send_file
 )
 
+import secrets
+
 import database as db
 import embedder
 import iris_embedder
+import liveness_api
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -27,10 +30,27 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY", "face-attend-secret-2024")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_PERMANENT"] = False   # session dies when browser closes
+
+# A new token is generated every time the server starts.
+# Any session cookie carrying an old token is treated as expired → login required.
+APP_START_TOKEN = secrets.token_hex(16)
 
 # Initialise DB on startup
 with app.app_context():
     db.init_db()
+
+
+@app.before_request
+def enforce_session_freshness():
+    """Invalidate sessions from a previous server run."""
+    # Skip static files and the auth pages themselves
+    if request.endpoint in ("static", "login", "signup", "index", None):
+        return
+    if session.get("start_token") != APP_START_TOKEN:
+        session.clear()
+        flash("Session expired. Please log in again.", "info")
+        return redirect(url_for("login"))
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -75,8 +95,6 @@ def decode_image(b64: str) -> np.ndarray:
 
 @app.route("/")
 def index():
-    if "teacher_id" in session:
-        return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
 
@@ -90,7 +108,7 @@ def login():
             session["teacher_id"]       = teacher["id"]
             session["teacher_username"] = teacher["username"]
             session["teacher_name"]     = teacher["name"] or teacher["username"]
-            # Clear any old context
+            session["start_token"]      = APP_START_TOKEN   # ties session to this server run
             for k in ("dept_id","dept_name","batch_id","batch_name","subject_id","subject_name"):
                 session.pop(k, None)
             flash(f"Welcome back, {session['teacher_name']}!", "success")
@@ -293,10 +311,15 @@ def attendance_mark():
     today_records = db.get_today_attendance(
         session["subject_id"], session["dept_id"], session["batch_id"]
     )
-    total_students = len(db.get_students(session["dept_id"], session["batch_id"]))
+    students      = db.get_students(session["dept_id"], session["batch_id"])
+    total_students = len(students)
+    iris_enrolled  = sum(1 for s in students if s["iris_photos"] >= 3)
+    face_enrolled  = sum(1 for s in students if s["face_photos"] >= 3)
     return render_template("attendance_mark.html",
                            today_records=today_records,
-                           total_students=total_students)
+                           total_students=total_students,
+                           iris_enrolled=iris_enrolled,
+                           face_enrolled=face_enrolled)
 
 
 @app.route("/api/attendance/frame", methods=["POST"])
@@ -317,6 +340,15 @@ def api_attendance_frame():
         img_rgb = decode_image(image_b64)
     except Exception as e:
         return jsonify({"ok": False, "message": f"Decode error: {e}"})
+
+    # Passive liveness check — rejects printed photos / phone screens
+    liveness_result = liveness_api.passive_liveness_check(img_rgb)
+    if not liveness_result["live"]:
+        return jsonify({
+            "ok": False, "detected": False,
+            "liveness_fail": True,
+            "message": liveness_result["reason"],
+        })
 
     # Extract embedding
     if mode == "face":
